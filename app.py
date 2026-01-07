@@ -13,13 +13,19 @@ def calculate_date_periods():
     """Calculate the date periods for comparison"""
     today = datetime.now()
     
+    # include a richer set of short-term periods: days 1-5 and weeks 1-4
     periods = {
         '1D': today - timedelta(days=1),
         '2D': today - timedelta(days=2),
+        '3D': today - timedelta(days=3),
+        '4D': today - timedelta(days=4),
         '5D': today - timedelta(days=5),
         '1W': today - timedelta(weeks=1),
         '2W': today - timedelta(weeks=2),
+        '3W': today - timedelta(weeks=3),
+        '4W': today - timedelta(weeks=4),
         '1M': today - timedelta(days=30),
+        '2M': today - timedelta(days=60),
         '3M': today - timedelta(days=90),
         '6M': today - timedelta(days=180),
         '1Y': today - timedelta(days=365),
