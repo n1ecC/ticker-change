@@ -1,10 +1,13 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 
 app = Flask(__name__)
+# Enable CORS for cross-origin requests (adjust origins in production)
+CORS(app)
 
 def calculate_date_periods():
     """Calculate the date periods for comparison"""
@@ -148,6 +151,11 @@ def get_stock_data(ticker):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok"}), 200
 
 @app.route('/api/stock/<ticker>')
 def stock_api(ticker):
