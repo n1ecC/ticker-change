@@ -125,8 +125,20 @@ def get_stock_data(ticker):
     
     # Calculate changes for each period
     for period_name, target_date in periods.items():
+        # If the target date is a weekday, leave the field blank per request
+        if isinstance(target_date, datetime) and target_date.weekday() < 5:
+            percentage_data.append({
+                "period": period_name,
+                "value": ""
+            })
+            net_change_data.append({
+                "period": period_name,
+                "value": ""
+            })
+            continue
+
         historical_price = get_historical_price_yfinance(ticker, target_date)
-        
+
         if historical_price is not None and not np.isnan(historical_price) and historical_price != 0:
             # Calculate net change
             net_change = current_price - historical_price
