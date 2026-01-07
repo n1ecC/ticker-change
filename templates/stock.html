@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="search-box">
+    <h1>Stock Price Tracker</h1>
+    <form action="/stock" method="GET">
+        <input type="text" name="ticker" placeholder="Enter stock ticker (e.g., AAPL)" value="{{ data.ticker if data.ticker }}" required>
+        <button type="submit">Get Stock Data</button>
+    </form>
+</div>
+
+{% if data.error %}
+<div class="error">
+    <h2>Error: {{ data.error }}</h2>
+    <p>Please check the ticker symbol and try again.</p>
+</div>
+{% else %}
+<div class="success">
+    <h2>{{ data.ticker }} - Current Price: ${{ "%.2f"|format(data.current_price) }}</h2>
+</div>
+
+<div class="tables-container">
+    <div class="table-wrapper">
+        <h3>Percentage Change</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Change (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data.percentage_data %}
+                <tr>
+                    <td>{{ row.period }}</td>
+                    <td class="{% if row.value != 'N/A' and row.period != 'Current Price' %}{{ 'positive' if row.is_positive else 'negative' }}{% elif row.value == 'N/A' %}na{% endif %}">
+                        {% if row.period == 'Current Price' %}
+                            {{ row.value }}
+                        {% elif row.value == 'N/A' %}
+                            N/A
+                        {% else %}
+                            {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}%
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="table-wrapper">
+        <h3>Net Change ($)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Change ($)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data.net_change_data %}
+                <tr>
+                    <td>{{ row.period }}</td>
+                    <td class="{% if row.value != 'N/A' and row.period != 'Current Price' %}{{ 'positive' if row.is_positive else 'negative' }}{% elif row.value == 'N/A' %}na{% endif %}">
+                        {% if row.period == 'Current Price' %}
+                            {{ row.value }}
+                        {% elif row.value == 'N/A' %}
+                            N/A
+                        {% else %}
+                            {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div style="margin-top: 30px; text-align: center;">
+    <a href="/">← Back to Search</a>
+</div>
+{% endblock %}

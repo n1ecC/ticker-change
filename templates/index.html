@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="search-box">
+    <h1>Stock Price Tracker</h1>
+    <form action="/stock" method="GET">
+        <input type="text" name="ticker" placeholder="Enter stock ticker (e.g., AAPL)" required>
+        <button type="submit">Get Stock Data</button>
+    </form>
+</div>
+
+<div class="info">
+    <h3>How to use:</h3>
+    <p>Enter any stock ticker symbol to see price changes over different time periods.</p>
+    <p>Examples: AAPL (Apple), GOOGL (Google), MSFT (Microsoft), TSLA (Tesla)</p>
+</div>
+{% endblock %}
