@@ -2,3 +2,5 @@ Flask
 yfinance
 pandas
 numpy
+gunicorn
+flask-cors
