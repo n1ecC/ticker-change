@@ -54,13 +54,23 @@ def get_historical_price_yfinance(ticker, target_date):
         
         # Determine appropriate period based on target date
         days_diff = (datetime.now() - target_date).days
-        
-        if days_diff <= 7:
+
+        # Short windows: use 5d for targets up to 5 days ago
+        if days_diff <= 5:
+            period = "5d"
+        # 2-week window
+        elif days_diff <= 14:
             period = "1mo"
+        # 3-week window
+        elif days_diff <= 21:
+            period = "1mo"
+        # ~4 weeks / 1 month
         elif days_diff <= 30:
             period = "3mo"
+        # up to ~3 months
         elif days_diff <= 90:
             period = "6mo"
+        # up to ~1 year
         elif days_diff <= 365:
             period = "1y"
         elif days_diff <= 365 * 2:
