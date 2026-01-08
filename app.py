@@ -125,15 +125,17 @@ def get_stock_data(ticker):
     
     # Calculate changes for each period
     for period_name, target_date in periods.items():
-        # If the target date is a weekday, leave the field blank per request
-        if isinstance(target_date, datetime) and target_date.weekday() < 5:
+        # If the target date is a weekend (Saturday=5, Sunday=6), mark as weekend placeholder
+        if isinstance(target_date, datetime) and target_date.weekday() >= 5:
             percentage_data.append({
                 "period": period_name,
-                "value": ""
+                "value": "N/A",
+                "placeholder": "weekend"
             })
             net_change_data.append({
                 "period": period_name,
-                "value": ""
+                "value": "N/A",
+                "placeholder": "weekend"
             })
             continue
 
