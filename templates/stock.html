@@ -37,7 +37,11 @@
                         {% if row.period == 'Current Price' %}
                             {{ row.value }}
                         {% elif row.value == 'N/A' %}
-                            N/A
+                            {% if row.placeholder == 'weekend' %}
+                                -
+                            {% else %}
+                                N/A
+                            {% endif %}
                         {% else %}
                             {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}%
                         {% endif %}
@@ -65,7 +69,11 @@
                         {% if row.period == 'Current Price' %}
                             {{ row.value }}
                         {% elif row.value == 'N/A' %}
-                            N/A
+                            {% if row.placeholder == 'weekend' %}
+                                -
+                            {% else %}
+                                N/A
+                            {% endif %}
                         {% else %}
                             {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}
                         {% endif %}
