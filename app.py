@@ -126,7 +126,9 @@ def get_stock_data(ticker):
     # Calculate changes for each period
     for period_name, target_date in periods.items():
         # If the target date is a weekend (Saturday=5, Sunday=6), mark as weekend placeholder
-        if isinstance(target_date, datetime) and target_date.weekday() >= 5:
+        # but do NOT dash monthly/yearly periods (they should still attempt to compute values)
+        monthly_yearly = {"1M", "2M", "3M", "6M", "1Y", "2Y", "5Y", "YTD"}
+        if isinstance(target_date, datetime) and target_date.weekday() >= 5 and period_name not in monthly_yearly:
             percentage_data.append({
                 "period": period_name,
                 "value": "N/A",
