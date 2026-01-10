@@ -1,17 +1,58 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="search-box">
-    <h1>Stock Price Tracker</h1>
-    <form action="/stock" method="GET">
-        <input type="text" name="ticker" placeholder="Enter stock ticker (e.g., AAPL)" required>
-        <button type="submit">Get Stock Data</button>
+<div class="bg-white rounded-2xl shadow-xl p-12 max-w-2xl mx-auto">
+    <div class="text-center mb-8">
+        <div class="text-6xl mb-4">📈</div>
+        <h1 class="text-4xl font-bold text-slate-900 mb-2">Stock Price Tracker</h1>
+        <p class="text-slate-600">Analyze historical stock performance with ease</p>
+    </div>
+    
+    <form action="/stock" method="GET" class="mb-8">
+        <div class="flex gap-3">
+            <input type="text" 
+                   name="ticker" 
+                   placeholder="Enter stock ticker (e.g., AAPL)" 
+                   required
+                   class="flex-1 px-6 py-4 text-lg border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+            <button type="submit" 
+                    class="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-lg font-semibold rounded-xl hover:from-blue-700 hover:to-blue-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                Analyze
+            </button>
+        </div>
     </form>
-</div>
 
-<div class="info">
-    <h3>How to use:</h3>
-    <p>Enter any stock ticker symbol to see price changes over different time periods.</p>
-    <p>Examples: AAPL (Apple), GOOGL (Google), MSFT (Microsoft), TSLA (Tesla)</p>
+    <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+        <h3 class="text-lg font-semibold text-slate-900 mb-3">✨ Features:</h3>
+        <ul class="space-y-2 text-slate-700">
+            <li class="flex items-start gap-2">
+                <span class="text-blue-600 mt-0.5">•</span>
+                <span>View percentage and dollar changes across multiple time periods</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-blue-600 mt-0.5">•</span>
+                <span>Interactive 6-month candlestick charts with volume</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-blue-600 mt-0.5">•</span>
+                <span>Custom weekday lookback calculator</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-blue-600 mt-0.5">•</span>
+                <span>Real-time data from Yahoo Finance</span>
+            </li>
+        </ul>
+        
+        <div class="mt-4 pt-4 border-t border-blue-200">
+            <p class="text-sm font-medium text-slate-700 mb-2">Popular tickers:</p>
+            <div class="flex flex-wrap gap-2">
+                <span class="px-3 py-1 bg-white rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">AAPL</span>
+                <span class="px-3 py-1 bg-white rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">GOOGL</span>
+                <span class="px-3 py-1 bg-white rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">MSFT</span>
+                <span class="px-3 py-1 bg-white rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">TSLA</span>
+                <span class="px-3 py-1 bg-white rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">NVDA</span>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
