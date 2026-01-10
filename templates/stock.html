@@ -19,6 +19,12 @@
     <h2>{{ data.ticker }} - Current Price: ${{ "%.2f"|format(data.current_price) }}</h2>
 </div>
 
+{% if data.chart_html %}
+<div class="chart-container" style="margin: 20px auto; max-width: 1200px;">
+    {{ data.chart_html|safe }}
+</div>
+{% endif %}
+
 <div class="tables-container">
     <div class="table-wrapper">
         <h3>Percentage Change</h3>
@@ -37,11 +43,7 @@
                         {% if row.period == 'Current Price' %}
                             {{ row.value }}
                         {% elif row.value == 'N/A' %}
-                            {% if row.placeholder == 'weekend' %}
-                                -
-                            {% else %}
-                                N/A
-                            {% endif %}
+                            N/A
                         {% else %}
                             {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}%
                         {% endif %}
@@ -69,11 +71,7 @@
                         {% if row.period == 'Current Price' %}
                             {{ row.value }}
                         {% elif row.value == 'N/A' %}
-                            {% if row.placeholder == 'weekend' %}
-                                -
-                            {% else %}
-                                N/A
-                            {% endif %}
+                            N/A
                         {% else %}
                             {{ '+' if row.is_positive else '' }}{{ "%.2f"|format(row.value) }}
                         {% endif %}

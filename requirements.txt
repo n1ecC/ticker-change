@@ -1,6 +1,8 @@
 Flask
+flask
 yfinance
 pandas
 numpy
 gunicorn
 flask-cors
+plotly

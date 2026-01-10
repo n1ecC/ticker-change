@@ -4,6 +4,8 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 app = Flask(__name__)
 # Enable CORS for cross-origin requests (adjust origins in production)
@@ -102,6 +104,77 @@ def get_historical_price_yfinance(ticker, target_date):
     except:
         return None
 
+def generate_stock_chart(ticker, period="6mo"):
+    """Generate an interactive Plotly candlestick chart"""
+    try:
+        stock = yf.Ticker(ticker.upper())
+        df = stock.history(period=period)
+        
+        if df.empty:
+            return None
+        
+        # Create subplots with secondary y-axis for volume
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.7, 0.3],
+            subplot_titles=(f'{ticker.upper()} Stock Price', 'Volume')
+        )
+        
+        # Add candlestick chart
+        fig.add_trace(
+            go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name='Price',
+                increasing_line_color='#26a69a',
+                decreasing_line_color='#ef5350'
+            ),
+            row=1, col=1
+        )
+        
+        # Add volume bar chart
+        colors = ['#26a69a' if row['Close'] >= row['Open'] else '#ef5350' 
+                  for idx, row in df.iterrows()]
+        
+        fig.add_trace(
+            go.Bar(
+                x=df.index,
+                y=df['Volume'],
+                name='Volume',
+                marker_color=colors,
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+        
+        # Update layout for Yahoo Finance style
+        fig.update_layout(
+            title=f'{ticker.upper()} - 6 Month Chart',
+            yaxis_title='Price ($)',
+            yaxis2_title='Volume',
+            xaxis_rangeslider_visible=False,
+            template='plotly_white',
+            height=600,
+            hovermode='x unified',
+            font=dict(size=12),
+            margin=dict(l=50, r=50, t=80, b=50)
+        )
+        
+        # Update x-axis
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+        
+        # Return HTML div
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
+        
+    except Exception as e:
+        print(f"Error generating chart: {e}")
+        return None
+
 def get_stock_data(ticker):
     """Get all stock data for web display"""
     if not ticker:
@@ -125,21 +198,10 @@ def get_stock_data(ticker):
     
     # Calculate changes for each period
     for period_name, target_date in periods.items():
-        # If the target date is a weekend (Saturday=5, Sunday=6), mark as weekend placeholder
-        # but do NOT dash monthly/yearly periods (they should still attempt to compute values)
-        monthly_yearly = {"1M", "2M", "3M", "6M", "1Y", "2Y", "5Y", "YTD"}
-        if isinstance(target_date, datetime) and target_date.weekday() >= 5 and period_name not in monthly_yearly:
-            percentage_data.append({
-                "period": period_name,
-                "value": "N/A",
-                "placeholder": "weekend"
-            })
-            net_change_data.append({
-                "period": period_name,
-                "value": "N/A",
-                "placeholder": "weekend"
-            })
-            continue
+        # Attempt to retrieve a historical price for all periods (including week-based periods).
+        # Previously we skipped weekends for short periods which prevented weekly rows
+        # from resolving when the target date landed on a weekend. We'll always attempt
+        # to fetch the closest prior trading day in `get_historical_price_yfinance`.
 
         historical_price = get_historical_price_yfinance(ticker, target_date)
 
@@ -173,11 +235,15 @@ def get_stock_data(ticker):
                 "value": "N/A"
             })
     
+    # Generate interactive chart
+    chart_html = generate_stock_chart(ticker)
+    
     return {
         "ticker": ticker.upper(),
         "current_price": current_price,
         "percentage_data": percentage_data,
-        "net_change_data": net_change_data
+        "net_change_data": net_change_data,
+        "chart_html": chart_html
     }
 
 @app.route('/')
