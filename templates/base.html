@@ -21,6 +21,21 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
       body { font-family: 'Inter', sans-serif; }
+      
+      /* Custom scrollbar for carousel */
+      .scrollbar-thin::-webkit-scrollbar {
+        height: 8px;
+      }
+      .scrollbar-thumb-slate-300::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 4px;
+      }
+      .scrollbar-track-transparent::-webkit-scrollbar-track {
+        background-color: transparent;
+      }
+      .dark .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
+        background-color: #475569;
+      }
     </style>
     <script>
       // Initialize dark mode before page load to prevent flash
