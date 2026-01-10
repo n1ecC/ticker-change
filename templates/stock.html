@@ -44,15 +44,15 @@
                 <table class="w-full">
                     <thead class="bg-slate-50 dark:bg-slate-700">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
-                            <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change (%)</th>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
+                            <th class="px-4 py-2 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change (%)</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-600">
                         {% for row in data.percentage_data %}
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold
+                            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
                                     {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
                                 {% elif row.value == 'N/A' %}
@@ -84,15 +84,15 @@
                 <table class="w-full">
                     <thead class="bg-slate-50 dark:bg-slate-700">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
-                            <th class="px-6 py-3 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change ($)</th>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
+                            <th class="px-4 py-2 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change ($)</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-600">
                         {% for row in data.net_change_data %}
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold
+                            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
                                     {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
                                 {% elif row.value == 'N/A' %}
