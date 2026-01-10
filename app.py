@@ -104,6 +104,22 @@ def get_historical_price_yfinance(ticker, target_date):
     except:
         return None
 
+def calculate_weekdays_ago(num_weekdays):
+    """Calculate the date N weekdays (trading days) ago"""
+    if num_weekdays <= 0:
+        return datetime.now()
+    
+    current_date = datetime.now()
+    weekdays_counted = 0
+    
+    while weekdays_counted < num_weekdays:
+        current_date -= timedelta(days=1)
+        # Monday=0, Sunday=6, so weekdays are 0-4
+        if current_date.weekday() < 5:
+            weekdays_counted += 1
+    
+    return current_date
+
 def generate_stock_chart(ticker, period="6mo"):
     """Generate an interactive Plotly candlestick chart"""
     try:
@@ -263,8 +279,40 @@ def stock_api(ticker):
 @app.route('/stock')
 def stock_page():
     ticker = request.args.get('ticker', '')
+    weekdays = request.args.get('weekdays', '')
+    
     if ticker:
         data = get_stock_data(ticker)
+        
+        # Handle custom weekdays lookback
+        custom_result = None
+        if weekdays:
+            try:
+                num_weekdays = int(weekdays)
+                if num_weekdays > 0:
+                    target_date = calculate_weekdays_ago(num_weekdays)
+                    historical_price = get_historical_price_yfinance(ticker, target_date)
+                    
+                    if historical_price and not np.isnan(historical_price) and historical_price != 0:
+                        current_price = data['current_price']
+                        net_change = current_price - historical_price
+                        percentage_change = ((current_price - historical_price) / historical_price) * 100
+                        
+                        custom_result = {
+                            'weekdays': num_weekdays,
+                            'target_date': target_date.strftime('%Y-%m-%d'),
+                            'historical_price': round(historical_price, 2),
+                            'current_price': round(current_price, 2),
+                            'net_change': round(net_change, 2),
+                            'percentage_change': round(percentage_change, 2),
+                            'is_positive': net_change > 0
+                        }
+                    else:
+                        custom_result = {'error': f'Could not retrieve price for {num_weekdays} weekdays ago'}
+            except ValueError:
+                custom_result = {'error': 'Please enter a valid number'}
+        
+        data['custom_result'] = custom_result
         return render_template('stock.html', data=data)
     return render_template('index.html')
 
