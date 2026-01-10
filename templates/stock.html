@@ -63,7 +63,7 @@
                             <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
                             <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
-                                    {{ 'text-blue-600 dark:text-blue-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
+                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
                                 {% elif row.value == 'N/A' %}
                                     text-slate-400 dark:text-slate-500
                                 {% else %}
@@ -103,7 +103,7 @@
                             <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
                             <td class="px-4 py-2 whitespace-nowrap text-sm text-right font-semibold
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
-                                    {{ 'text-blue-600 dark:text-blue-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
+                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
                                 {% elif row.value == 'N/A' %}
                                     text-slate-400 dark:text-slate-500
                                 {% else %}
@@ -177,13 +177,13 @@
                                     </div>
                                     <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
                                         <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Net Change</span>
-                                        <span class="text-sm font-bold {{ 'text-blue-600 dark:text-blue-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
+                                        <span class="text-sm font-bold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
                                             {{ '+' if data.custom_result.is_positive else '' }}${{ "%.2f"|format(data.custom_result.net_change) }}
                                         </span>
                                     </div>
                                     <div class="flex justify-between items-center py-2">
                                         <span class="text-sm font-medium text-slate-700 dark:text-slate-300">% Change</span>
-                                        <span class="text-lg font-bold {{ 'text-blue-600 dark:text-blue-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
+                                        <span class="text-lg font-bold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
                                             {{ '+' if data.custom_result.is_positive else '' }}{{ "%.2f"|format(data.custom_result.percentage_change) }}%
                                         </span>
                                     </div>
