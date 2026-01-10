@@ -120,10 +120,22 @@ def calculate_weekdays_ago(num_weekdays):
     
     return current_date
 
-def generate_stock_chart(ticker, period="6mo"):
-    """Generate an interactive Plotly candlestick chart"""
+def generate_stock_chart(ticker, period="5y"):
+    """Generate an interactive Plotly candlestick chart with timeframe controls
+    
+    Args:
+        ticker: Stock ticker symbol
+        period: Default data period to fetch (5y gives full flexibility)
+    
+    Returns:
+        HTML string with interactive Plotly chart including:
+        - Range selector buttons (1D, 5D, 1M, 3M, 6M, YTD, 1Y, 5Y, All)
+        - Range slider for manual date selection
+        - Interactive zoom, pan, and hover tooltips
+    """
     try:
         stock = yf.Ticker(ticker.upper())
+        # Fetch 5 years of data for maximum flexibility
         df = stock.history(period=period)
         
         if df.empty:
@@ -168,23 +180,57 @@ def generate_stock_chart(ticker, period="6mo"):
             row=2, col=1
         )
         
-        # Update layout for Yahoo Finance style
+        # Update layout with interactive controls
         fig.update_layout(
-            title=f'{ticker.upper()} - 6 Month Chart',
+            title={
+                'text': f'{ticker.upper()} Interactive Chart',
+                'font': {'size': 20, 'color': '#1e293b'},
+                'x': 0.5,
+                'xanchor': 'center'
+            },
             yaxis_title='Price ($)',
             yaxis2_title='Volume',
-            xaxis_rangeslider_visible=False,
             template='plotly_white',
-            height=600,
+            height=650,
             hovermode='x unified',
             font=dict(size=12),
-            margin=dict(l=50, r=50, t=80, b=50)
+            margin=dict(l=50, r=50, t=100, b=50),
+            # Enable range slider for manual selection
+            xaxis2=dict(
+                rangeslider=dict(
+                    visible=True,
+                    thickness=0.05
+                ),
+                type='date'
+            )
         )
         
-        # Update x-axis
-        fig.update_xaxes(title_text="Date", row=2, col=1)
+        # Add range selector buttons for quick timeframe switching
+        fig.update_xaxes(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1D", step="day", stepmode="backward"),
+                    dict(count=5, label="5D", step="day", stepmode="backward"),
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(count=1, label="YTD", step="year", stepmode="todate"),
+                    dict(count=1, label="1Y", step="year", stepmode="backward"),
+                    dict(count=5, label="5Y", step="year", stepmode="backward"),
+                    dict(label="All", step="all")
+                ]),
+                bgcolor='#f1f5f9',
+                activecolor='#3b82f6',
+                x=0,
+                y=1.15,
+                xanchor='left',
+                yanchor='top'
+            ),
+            title_text="Date",
+            row=2, col=1
+        )
         
-        # Return HTML div
+        # Return HTML div with CDN-hosted Plotly.js
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
         
     except Exception as e:
