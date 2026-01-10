@@ -26,7 +26,6 @@ def calculate_date_periods():
         '1W': today - timedelta(weeks=1),
         '2W': today - timedelta(weeks=2),
         '3W': today - timedelta(weeks=3),
-        '4W': today - timedelta(weeks=4),
         '1M': today - timedelta(days=30),
         '2M': today - timedelta(days=60),
         '3M': today - timedelta(days=90),
