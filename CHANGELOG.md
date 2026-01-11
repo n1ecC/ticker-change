@@ -1,6 +1,62 @@
 # Ticker-Change - Development Session Log
-**Date:** January 10, 2026  
-**App Name:** ticker-change  
+
+## January 11, 2026 - UI Enhancements and Documentation
+
+**Session Summary:** Added shiny card hover effect, updated button styling, and created documentation
+
+---
+
+### ✨ New Features
+
+#### Shiny Card Hover Effect (GitHub-style)
+**Description:** Added interactive hover effect to the ticker card where a shiny gradient overlay follows the mouse cursor  
+**Implementation:**
+- Added CSS for `.shiny-card` with animated overlay using CSS custom properties
+- Implemented vanilla JavaScript for mouse position tracking
+- Overlay uses blur effect with opacity transitions
+- Works in both light and dark modes with appropriate opacity adjustments
+
+**Technical Details:**
+- Uses CSS `transform: translate()` with CSS custom properties (`--shiny-x`, `--shiny-y`)
+- JavaScript event listeners for `mousemove` and `touchmove` events
+- Inspired by GitHub's homepage card design
+- Adapted from animata.design React example to vanilla JavaScript
+
+**Files Changed:**
+- `templates/base.html` (added `.shiny-card` CSS styles)
+- `templates/stock.html` (added JavaScript and applied `shiny-card` class to ticker card)
+
+---
+
+### 🎨 UI/UX Improvements
+
+#### Updated Button Styling
+**Description:** Changed external link buttons (Finviz, MarketChameleon, ApeWisdom) from blue to grey for a more neutral appearance  
+**Changes:**
+- Updated button colors from `bg-blue-600 hover:bg-blue-700` to `bg-slate-600 hover:bg-slate-700`
+- All three external link buttons now use consistent grey styling
+
+**Files Changed:**
+- `templates/stock.html` (updated button classes)
+
+---
+
+### 📚 Documentation
+
+#### Project Organization
+**Description:** Organized documentation into dedicated `docs/` folder and added `.gitignore` to keep it local  
+**Changes:**
+- Created `docs/` directory
+- Added `.gitignore` with `docs/` entry to prevent accidental commits
+
+**Files Changed:**
+- Created `docs/` directory
+- Created `.gitignore`
+
+---
+
+## January 10, 2026 - Major Features Update
+
 **Session Summary:** Major UI/UX improvements, interactive charts, dark mode, and reliability enhancements
 
 ---
