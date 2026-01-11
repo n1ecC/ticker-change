@@ -147,7 +147,7 @@ def calculate_weekdays_ago(num_weekdays):
     return current_date
 
 def generate_stock_chart(ticker, period="5y", retries=2):
-    """Generate an interactive Plotly candlestick chart with timeframe controls
+    """Generate an interactive Plotly price chart with timeframe controls
     
     Args:
         ticker: Stock ticker symbol
@@ -156,8 +156,9 @@ def generate_stock_chart(ticker, period="5y", retries=2):
     
     Returns:
         HTML string with interactive Plotly chart including:
+        - Candlestick price chart
+        - Color-coded volume histogram
         - Range selector buttons (1D, 5D, 1M, 3M, 6M, YTD, 1Y, 5Y, All)
-        - Range slider for manual date selection
         - Interactive zoom, pan, and hover tooltips
     """
     for attempt in range(retries):
@@ -172,14 +173,13 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     continue
                 return None
             
-            # Create subplots with secondary y-axis for volume
-            # Remove first subplot title to prevent overlap with rangeselector
+            # Create subplots with shared x-axis for volume
             fig = make_subplots(
                 rows=2, cols=1,
                 shared_xaxes=True,
                 vertical_spacing=0.08,
                 row_heights=[0.7, 0.3],
-                subplot_titles=('', 'Volume')  # Empty first title, will add manually
+                subplot_titles=('Price', 'Volume')
             )
             
             # Add candlestick chart
@@ -197,7 +197,7 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 row=1, col=1
             )
             
-            # Add volume bar chart
+            # Add volume bars as color-coded histogram (green for up, red for down)
             colors = ['#26a69a' if row['Close'] >= row['Open'] else '#ef5350' 
                       for idx, row in df.iterrows()]
             
@@ -207,54 +207,29 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     y=df['Volume'],
                     name='Volume',
                     marker_color=colors,
-                    showlegend=False
+                    showlegend=False,
+                    marker_line_width=0
                 ),
                 row=2, col=1
             )
             
-            # Ensure candlestick trace shows legend is hidden (we'll create it in HTML)
-            fig.update_traces(showlegend=False, row=1, col=1)
-            
-            # Simplified layout - responsive with proper spacing
-            # Note: Plotly doesn't have vertical justification like CSS, but we use margins and positioning
+            # Update layout (no range slider)
             fig.update_layout(
-                yaxis_title='Price ($)',
-                yaxis2_title='Volume',
                 template='plotly_white',
                 height=600,
                 hovermode='x unified',
                 font=dict(size=12),
-                autosize=True,  # Make chart responsive to container width
-                margin=dict(l=60, r=60, t=130, b=80),  # Increased top margin significantly to prevent overlap
-                # Enable range slider for manual selection
-                xaxis2=dict(
-                    rangeslider=dict(
-                        visible=True,
-                        thickness=0.05
-                    ),
-                    type='date'
-                ),
-                # Add annotation for "Stock Price" title - positioned higher with more spacing
-                annotations=[
-                    dict(
-                        text=f'{ticker.upper()} Stock Price',
-                        xref='paper',
-                        yref='paper',
-                        x=0.5,
-                        xanchor='center',
-                        y=0.995,  # Higher position, closer to top margin
-                        yanchor='top',
-                        showarrow=False,
-                        font=dict(size=14, color='#1e293b'),
-                        bgcolor='rgba(255,255,255,0)',
-                        bordercolor='rgba(0,0,0,0)',
-                        borderwidth=0
-                    )
-                ]
+                autosize=True,
+                margin=dict(l=60, r=60, t=60, b=80),
+                showlegend=False,
+                xaxis_rangeslider_visible=False
             )
             
-            # Add range selector buttons - positioned lower with smaller font to prevent cutoff
-            # Plotly doesn't support vertical justification, but we can control spacing with y values
+            # Update y-axes labels
+            fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+            fig.update_yaxes(title_text="Volume", row=2, col=1)
+            
+            # Add range selector buttons to bottom x-axis (no range slider)
             fig.update_xaxes(
                 rangeselector=dict(
                     buttons=list([
@@ -270,12 +245,13 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     ]),
                     bgcolor='#f1f5f9',
                     activecolor='#3b82f6',
-                    x=0,  # Left-aligned
-                    y=1.02,  # Lower position to create more space from title and prevent cutoff
+                    x=0,
+                    y=1.0,
                     xanchor='left',
                     yanchor='top',
-                    font=dict(size=9)  # Smaller font to fit better and prevent cutoff
+                    font=dict(size=9)
                 ),
+                type='date',
                 title_text="Date",
                 row=2, col=1
             )
