@@ -147,7 +147,20 @@
                                min="1" 
                                max="5000" 
                                placeholder="e.g., 10, 30, 250"
-                               value="{% if data.custom_result %}{{ data.custom_result.weekdays }}{% endif %}"
+                               value="{% if data.custom_result and data.custom_result.type == 'weekdays' %}{{ data.custom_result.days }}{% endif %}"
+                               class="w-full px-4 py-2 text-base border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                    </div>
+                    <div>
+                        <label for="days" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                            Days Ago
+                        </label>
+                        <input type="number" 
+                               id="days" 
+                               name="days" 
+                               min="1" 
+                               max="5000" 
+                               placeholder="e.g., 10, 30, 250"
+                               value="{% if data.custom_result and data.custom_result.type == 'days' %}{{ data.custom_result.days }}{% endif %}"
                                class="w-full px-4 py-2 text-base border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
                     </div>
                     <button type="submit" 
@@ -165,7 +178,7 @@
                         <div class="mt-4 sm:mt-6 space-y-4">
                             <div class="border-t border-slate-200 dark:border-slate-600 pt-4">
                                 <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                                    {{ data.custom_result.weekdays }} weekdays ago
+                                    {{ data.custom_result.days }} {{ 'weekdays' if data.custom_result.type == 'weekdays' else 'days' }} ago
                                 </p>
                                 <p class="text-xs text-slate-600 dark:text-slate-400 mb-4">{{ data.custom_result.target_date }}</p>
                                 
@@ -221,7 +234,12 @@
         
         <!-- Chart Container - spans full width by negating parent padding -->
         <div class="w-full overflow-x-auto" style="margin-left: calc(-1 * 1rem); margin-right: calc(-1 * 1rem); width: calc(100% + 2rem);">
-            <div id="plotly-chart" class="w-full" style="width: 100%;">
+            <div id="plotly-chart" 
+                 class="w-full" 
+                 style="width: 100%;"
+                 data-ticker="{{ data.ticker if data.ticker else '' }}"
+                 data-start-date="{{ data.chart_date_range.start if data.chart_date_range else '' }}"
+                 data-end-date="{{ data.chart_date_range.end if data.chart_date_range else '' }}">
                 {{ data.chart_html|safe }}
             </div>
         </div>
@@ -269,23 +287,145 @@ function updateTradingViewLink(timeframe) {
     }
 }
 
+// Chart pan handling for dynamic data loading
+let chartDataRange = {
+    start: null,
+    end: null
+};
+let isLoadingData = false;
+
+function updateChartWithNewData(ticker, newData) {
+    if (!window.Plotly) return;
+    
+    const plotlyDiv = document.querySelector('#plotly-chart > div');
+    if (!plotlyDiv || !plotlyDiv.data) return;
+    
+    const graphDiv = plotlyDiv;
+    
+    // Get current data
+    const currentData = plotlyDiv.data;
+    if (!currentData || currentData.length < 2) return;
+    
+    // Convert new data to Plotly format
+    const newDates = newData.map(d => d.date);
+    const newOpen = newData.map(d => d.open);
+    const newHigh = newData.map(d => d.high);
+    const newLow = newData.map(d => d.low);
+    const newClose = newData.map(d => d.close);
+    const newVolume = newData.map(d => d.volume);
+    const newColors = newData.map(d => d.close >= d.open ? '#26a69a' : '#ef5350');
+    
+    // Get existing data
+    const existingDates = currentData[0].x || [];
+    const existingOpen = currentData[0].open || [];
+    const existingHigh = currentData[0].high || [];
+    const existingLow = currentData[0].low || [];
+    const existingClose = currentData[0].close || [];
+    const existingVolume = currentData[1].y || [];
+    const existingColors = currentData[1].marker?.color || [];
+    
+    // Merge data (prepend new data)
+    const mergedDates = [...newDates, ...existingDates];
+    const mergedOpen = [...newOpen, ...existingOpen];
+    const mergedHigh = [...newHigh, ...existingHigh];
+    const mergedLow = [...newLow, ...existingLow];
+    const mergedClose = [...newClose, ...existingClose];
+    const mergedVolume = [...newVolume, ...existingVolume];
+    const mergedColors = [...newColors, ...existingColors];
+    
+    // Update candlestick trace
+    Plotly.restyle(graphDiv, {
+        x: [mergedDates],
+        open: [mergedOpen],
+        high: [mergedHigh],
+        low: [mergedLow],
+        close: [mergedClose]
+    }, [0]);
+    
+    // Update volume trace
+    Plotly.restyle(graphDiv, {
+        x: [mergedDates],
+        y: [mergedVolume],
+        'marker.color': [mergedColors]
+    }, [1]);
+    
+    // Update date range
+    if (newData.length > 0) {
+        chartDataRange.start = newData[0].date;
+        const chartContainer = document.getElementById('plotly-chart');
+        if (chartContainer) {
+            chartContainer.setAttribute('data-start-date', chartDataRange.start);
+        }
+    }
+}
+
 // Listen for Plotly rangeselector button clicks and update TradingView link
 document.addEventListener('DOMContentLoaded', function() {
+    const chartContainer = document.getElementById('plotly-chart');
+    if (!chartContainer) return;
+    
+    const ticker = chartContainer.getAttribute('data-ticker');
+    const startDate = chartContainer.getAttribute('data-start-date');
+    const endDate = chartContainer.getAttribute('data-end-date');
+    
+    chartDataRange.start = startDate;
+    chartDataRange.end = endDate;
+    
     // Wait for Plotly to load
     setTimeout(function() {
         const plotlyDiv = document.querySelector('#plotly-chart > div');
-        if (plotlyDiv) {
-            // Listen for clicks on rangeselector buttons
-            plotlyDiv.addEventListener('click', function(event) {
-                const target = event.target;
-                // Check if clicked element is a rangeselector button
-                if (target && target.classList && target.classList.contains('rangeselector')) {
-                    // Extract timeframe from button label if possible
-                    // Since Plotly doesn't expose this easily, we'll use a default mapping
-                    updateTradingViewLink('1M'); // Default fallback
+        if (!plotlyDiv) return;
+        
+        const graphDiv = plotlyDiv;
+        
+        // Listen for clicks on rangeselector buttons
+        plotlyDiv.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target && target.classList && target.classList.contains('rangeselector')) {
+                updateTradingViewLink('1M');
+            }
+        });
+        
+        // Listen for pan events
+        graphDiv.on('plotly_relayout', function(eventData) {
+            if (isLoadingData || !ticker) return;
+            
+            // Check if x-axis range changed (panning)
+            if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
+                const visibleStart = new Date(eventData['xaxis.range[0]']);
+                const dataStart = new Date(chartDataRange.start);
+                
+                // Check if panning backwards (before current data start)
+                // Add 2 days buffer to account for weekends/holidays
+                const bufferDays = 2 * 24 * 60 * 60 * 1000;
+                if (visibleStart < new Date(dataStart.getTime() - bufferDays)) {
+                    isLoadingData = true;
+                    
+                    // Calculate date range to fetch (extend backwards)
+                    const fetchEndDate = new Date(dataStart);
+                    fetchEndDate.setDate(fetchEndDate.getDate() - 1); // Day before current start
+                    const fetchStartDate = new Date(fetchEndDate);
+                    fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 1); // Fetch 1 year back
+                    
+                    // Fetch new data
+                    const startDateStr = fetchStartDate.toISOString().split('T')[0];
+                    const endDateStr = fetchEndDate.toISOString().split('T')[0];
+                    
+                    fetch(`/api/chart-data/${ticker}?start_date=${startDateStr}&end_date=${endDateStr}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data && data.data && data.data.length > 0) {
+                                updateChartWithNewData(ticker, data.data);
+                            }
+                            isLoadingData = false;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching chart data:', error);
+                            isLoadingData = false;
+                        });
                 }
-            });
-        }
+            }
+        });
     }, 500);
 });
 </script>
