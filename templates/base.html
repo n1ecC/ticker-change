@@ -23,18 +23,39 @@
       body { font-family: 'Inter', sans-serif; }
       
       /* Custom scrollbar for carousel */
-      .scrollbar-thin::-webkit-scrollbar {
-        height: 8px;
+      .carousel-scrollbar::-webkit-scrollbar {
+        height: 10px;
       }
-      .scrollbar-thumb-slate-300::-webkit-scrollbar-thumb {
+      .carousel-scrollbar::-webkit-scrollbar-track {
+        background-color: #f1f5f9;
+        border-radius: 5px;
+      }
+      .carousel-scrollbar::-webkit-scrollbar-thumb {
         background-color: #cbd5e1;
-        border-radius: 4px;
+        border-radius: 5px;
       }
-      .scrollbar-track-transparent::-webkit-scrollbar-track {
-        background-color: transparent;
+      .carousel-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8;
       }
-      .dark .scrollbar-thumb-slate-600::-webkit-scrollbar-thumb {
+      
+      /* Dark mode scrollbar */
+      .dark .carousel-scrollbar::-webkit-scrollbar-track {
+        background-color: #1e293b;
+      }
+      .dark .carousel-scrollbar::-webkit-scrollbar-thumb {
         background-color: #475569;
+      }
+      .dark .carousel-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: #64748b;
+      }
+      
+      /* Firefox scrollbar */
+      .carousel-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 #f1f5f9;
+      }
+      .dark .carousel-scrollbar {
+        scrollbar-color: #475569 #1e293b;
       }
     </style>
     <script>
