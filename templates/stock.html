@@ -22,26 +22,27 @@
     <p class="text-sm sm:text-base text-red-700 dark:text-red-400">Please check the ticker symbol and try again.</p>
 </div>
 {% else %}
-<div class="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-l-4 border-blue-500 dark:border-blue-400 p-4 sm:p-6 rounded-lg mb-6 sm:mb-8">
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+<div class="shiny-card bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-l-4 border-blue-500 dark:border-blue-400 p-4 sm:p-6 rounded-lg mb-6 sm:mb-8" id="ticker-card">
+    <div class="shiny-card-overlay"></div>
+    <div class="shiny-card-content flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white break-words">{{ data.ticker }} - <span class="text-blue-600 dark:text-blue-400">${{ "%.2f"|format(data.current_price) }}</span></h2>
         <div class="flex flex-col items-stretch sm:items-end gap-2">
             <a href="https://finviz.com/quote.ashx?t={{ data.ticker }}" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
                 View on Finviz
             </a>
             <a href="https://marketchameleon.com/Overview/{{ data.ticker }}/Summary/" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
                 MarketChameleon
             </a>
             <a href="https://apewisdom.io/stocks/{{ data.ticker }}/" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
@@ -325,6 +326,40 @@
 
 {% block scripts %}
 <script>
+// Shiny card hover effect (GitHub-style)
+document.addEventListener('DOMContentLoaded', function() {
+    const tickerCard = document.getElementById('ticker-card');
+    const overlay = tickerCard?.querySelector('.shiny-card-overlay');
+    
+    if (tickerCard && overlay) {
+        const updateOverlayPosition = (event) => {
+            const rect = tickerCard.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            // Center the overlay on the mouse position
+            const overlayWidth = 256; // 16rem = 256px
+            const overlayHeight = 256;
+            const xOffset = x - overlayWidth / 2;
+            const yOffset = y - overlayHeight / 2;
+            
+            overlay.style.setProperty('--shiny-x', `${xOffset}px`);
+            overlay.style.setProperty('--shiny-y', `${yOffset}px`);
+        };
+        
+        tickerCard.addEventListener('mousemove', updateOverlayPosition);
+        tickerCard.addEventListener('touchmove', function(e) {
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                updateOverlayPosition({
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+            }
+        });
+    }
+});
+
 // Update TradingView link based on selected timeframe
 function updateTradingViewLink(timeframe) {
     const link = document.getElementById('tradingview-link');
