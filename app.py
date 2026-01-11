@@ -555,6 +555,11 @@ def stock_page():
                         net_change = current_price - historical_price
                         percentage_change = ((current_price - historical_price) / historical_price) * 100
                         
+                        # Calculate ATR as percentage if available
+                        atr_percent = None
+                        if price_ranges and 'atr_30d' in price_ranges and current_price > 0:
+                            atr_percent = (price_ranges['atr_30d'] / current_price) * 100
+                        
                         custom_result = {
                             'type': 'weekdays',
                             'days': num_weekdays,
@@ -563,7 +568,8 @@ def stock_page():
                             'current_price': round(current_price, 2),
                             'net_change': round(net_change, 2),
                             'percentage_change': round(percentage_change, 2),
-                            'is_positive': net_change > 0
+                            'is_positive': net_change > 0,
+                            'atr_percent': round(atr_percent, 2) if atr_percent is not None else None
                         }
                     else:
                         custom_result = {'error': f'Could not retrieve price for {num_weekdays} weekdays ago'}
@@ -582,6 +588,11 @@ def stock_page():
                         net_change = current_price - historical_price
                         percentage_change = ((current_price - historical_price) / historical_price) * 100
                         
+                        # Calculate ATR as percentage if available
+                        atr_percent = None
+                        if price_ranges and 'atr_30d' in price_ranges and current_price > 0:
+                            atr_percent = (price_ranges['atr_30d'] / current_price) * 100
+                        
                         custom_result = {
                             'type': 'days',
                             'days': num_days,
@@ -590,7 +601,8 @@ def stock_page():
                             'current_price': round(current_price, 2),
                             'net_change': round(net_change, 2),
                             'percentage_change': round(percentage_change, 2),
-                            'is_positive': net_change > 0
+                            'is_positive': net_change > 0,
+                            'atr_percent': round(atr_percent, 2) if atr_percent is not None else None
                         }
                     else:
                         custom_result = {'error': f'Could not retrieve price for {num_days} days ago'}
