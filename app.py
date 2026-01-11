@@ -32,6 +32,8 @@ def calculate_date_periods():
         '6M': today - timedelta(days=180),
         '1Y': today - timedelta(days=365),
         '2Y': today - timedelta(days=365*2),
+        '3Y': today - timedelta(days=365*3),
+        '4Y': today - timedelta(days=365*4),
         '5Y': today - timedelta(days=365*5),
         'YTD': datetime(today.year, 1, 1)
     }
