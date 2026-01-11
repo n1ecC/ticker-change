@@ -219,21 +219,9 @@
             </a>
         </div>
         
-        <!-- Legend -->
-        <div class="mb-4 flex items-center justify-center gap-4 flex-wrap">
-            <div class="flex items-center gap-2">
-                <div class="w-4 h-4 bg-emerald-500 rounded"></div>
-                <span class="text-sm text-slate-700 dark:text-slate-300">Price Up</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <div class="w-4 h-4 bg-red-500 rounded"></div>
-                <span class="text-sm text-slate-700 dark:text-slate-300">Price Down</span>
-            </div>
-        </div>
-        
-        <!-- Chart Container -->
-        <div class="w-full overflow-x-auto">
-            <div id="plotly-chart" class="w-full">
+        <!-- Chart Container - spans full width by negating parent padding -->
+        <div class="w-full overflow-x-auto" style="margin-left: calc(-1 * 1rem); margin-right: calc(-1 * 1rem); width: calc(100% + 2rem);">
+            <div id="plotly-chart" class="w-full" style="width: 100%;">
                 {{ data.chart_html|safe }}
             </div>
         </div>
