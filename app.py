@@ -261,13 +261,84 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 row=2, col=1
             )
         
-            # Return HTML div with CDN-hosted Plotly.js
-            return fig.to_html(full_html=False, include_plotlyjs='cdn')
+            # Return HTML div with CDN-hosted Plotly.js and date range info
+            chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+            date_range = {
+                'start': df.index[0].strftime('%Y-%m-%d'),
+                'end': df.index[-1].strftime('%Y-%m-%d')
+            }
+            return {'html': chart_html, 'date_range': date_range}
             
         except Exception as e:
             print(f"Chart generation attempt {attempt + 1} failed: {e}")
             if attempt < retries - 1:
                 time.sleep(1)
+            continue
+    
+    return None
+
+def get_chart_data_json(ticker, start_date=None, end_date=None, retries=2):
+    """Fetch historical stock data for a date range and return as JSON
+    
+    Args:
+        ticker: Stock ticker symbol
+        start_date: Start date (datetime or string, optional)
+        end_date: End date (datetime or string, optional)
+        retries: Number of retry attempts if data fetch fails
+    
+    Returns:
+        Dictionary with 'data' (list of OHLCV records) and 'date_range' (start/end dates)
+        or None if fetch fails
+    """
+    for attempt in range(retries):
+        try:
+            stock = yf.Ticker(ticker.upper())
+            
+            # Use period-based fetch if no dates specified, otherwise use date range
+            if start_date and end_date:
+                # Convert string dates to datetime if needed
+                if isinstance(start_date, str):
+                    start_date = pd.to_datetime(start_date)
+                if isinstance(end_date, str):
+                    end_date = pd.to_datetime(end_date)
+                df = stock.history(start=start_date, end=end_date)
+            else:
+                # Default to 5 years if no dates specified
+                df = stock.history(period="5y")
+            
+            if df.empty:
+                if attempt < retries - 1:
+                    time.sleep(0.5)
+                    continue
+                return None
+            
+            # Handle timezone
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+            
+            # Convert to list of dictionaries for JSON serialization
+            data = []
+            for idx, row in df.iterrows():
+                data.append({
+                    'date': idx.strftime('%Y-%m-%d'),
+                    'open': float(row['Open']),
+                    'high': float(row['High']),
+                    'low': float(row['Low']),
+                    'close': float(row['Close']),
+                    'volume': int(row['Volume'])
+                })
+            
+            return {
+                'data': data,
+                'date_range': {
+                    'start': df.index[0].strftime('%Y-%m-%d'),
+                    'end': df.index[-1].strftime('%Y-%m-%d')
+                }
+            }
+            
+        except Exception as e:
+            print(f"Chart data fetch attempt {attempt + 1} failed for {ticker}: {e}")
+            if attempt < retries - 1:
+                time.sleep(0.5)
             continue
     
     return None
@@ -333,14 +404,21 @@ def get_stock_data(ticker):
             })
     
     # Generate interactive chart
-    chart_html = generate_stock_chart(ticker)
+    chart_result = generate_stock_chart(ticker)
+    if chart_result:
+        chart_html = chart_result['html']
+        chart_date_range = chart_result['date_range']
+    else:
+        chart_html = None
+        chart_date_range = None
     
     return {
         "ticker": ticker.upper(),
         "current_price": current_price,
         "percentage_data": percentage_data,
         "net_change_data": net_change_data,
-        "chart_html": chart_html
+        "chart_html": chart_html,
+        "chart_date_range": chart_date_range
     }
 
 @app.route('/')
@@ -357,15 +435,29 @@ def stock_api(ticker):
     data = get_stock_data(ticker)
     return jsonify(data)
 
+@app.route('/api/chart-data/<ticker>')
+def chart_data_api(ticker):
+    """API endpoint to fetch chart data for a specific date range"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    result = get_chart_data_json(ticker, start_date=start_date, end_date=end_date)
+    
+    if result is None:
+        return jsonify({"error": f"Could not retrieve chart data for {ticker}"}), 404
+    
+    return jsonify(result)
+
 @app.route('/stock')
 def stock_page():
     ticker = request.args.get('ticker', '')
     weekdays = request.args.get('weekdays', '')
+    days = request.args.get('days', '')
     
     if ticker:
         data = get_stock_data(ticker)
         
-        # Handle custom weekdays lookback
+        # Handle custom lookback (weekdays or days)
         custom_result = None
         if weekdays:
             try:
@@ -380,7 +472,8 @@ def stock_page():
                         percentage_change = ((current_price - historical_price) / historical_price) * 100
                         
                         custom_result = {
-                            'weekdays': num_weekdays,
+                            'type': 'weekdays',
+                            'days': num_weekdays,
                             'target_date': target_date.strftime('%Y-%m-%d'),
                             'historical_price': round(historical_price, 2),
                             'current_price': round(current_price, 2),
@@ -390,6 +483,33 @@ def stock_page():
                         }
                     else:
                         custom_result = {'error': f'Could not retrieve price for {num_weekdays} weekdays ago'}
+            except ValueError:
+                custom_result = {'error': 'Please enter a valid number'}
+        elif days:
+            try:
+                num_days = int(days)
+                if num_days > 0:
+                    # Simple calendar days calculation (no weekday filtering)
+                    target_date = datetime.now() - timedelta(days=num_days)
+                    historical_price = get_historical_price_yfinance(ticker, target_date)
+                    
+                    if historical_price and not np.isnan(historical_price) and historical_price != 0:
+                        current_price = data['current_price']
+                        net_change = current_price - historical_price
+                        percentage_change = ((current_price - historical_price) / historical_price) * 100
+                        
+                        custom_result = {
+                            'type': 'days',
+                            'days': num_days,
+                            'target_date': target_date.strftime('%Y-%m-%d'),
+                            'historical_price': round(historical_price, 2),
+                            'current_price': round(current_price, 2),
+                            'net_change': round(net_change, 2),
+                            'percentage_change': round(percentage_change, 2),
+                            'is_positive': net_change > 0
+                        }
+                    else:
+                        custom_result = {'error': f'Could not retrieve price for {num_days} days ago'}
             except ValueError:
                 custom_result = {'error': 'Please enter a valid number'}
         
