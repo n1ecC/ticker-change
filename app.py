@@ -212,12 +212,14 @@ def generate_stock_chart(ticker, period="5y", retries=2):
             )
             
             # Update layout with interactive controls
+            # Increased top margin to accommodate title and range selector buttons
             fig.update_layout(
                 title={
                     'text': f'{ticker.upper()} Interactive Chart',
-                    'font': {'size': 20, 'color': '#1e293b'},
+                    'font': {'size': 16, 'color': '#1e293b'},
                     'x': 0.5,
-                    'xanchor': 'center'
+                    'xanchor': 'center',
+                    'pad': dict(t=10, b=10)
                 },
                 yaxis_title='Price ($)',
                 yaxis2_title='Volume',
@@ -225,7 +227,7 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 height=650,
                 hovermode='x unified',
                 font=dict(size=12),
-                margin=dict(l=50, r=50, t=100, b=50),
+                margin=dict(l=50, r=50, t=200, b=50),
                 # Enable range slider for manual selection
                 xaxis2=dict(
                     rangeslider=dict(
@@ -237,6 +239,7 @@ def generate_stock_chart(ticker, period="5y", retries=2):
             )
             
             # Add range selector buttons for quick timeframe switching
+            # Positioned with enough space below the title to prevent overlap
             fig.update_xaxes(
                 rangeselector=dict(
                     buttons=list([
@@ -253,9 +256,10 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     bgcolor='#f1f5f9',
                     activecolor='#3b82f6',
                     x=0,
-                    y=1.15,
+                    y=1.02,
                     xanchor='left',
-                    yanchor='top'
+                    yanchor='top',
+                    font=dict(size=9)
                 ),
                 title_text="Date",
                 row=2, col=1
