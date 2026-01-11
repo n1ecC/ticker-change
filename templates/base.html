@@ -22,6 +22,19 @@
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
       body { font-family: 'Inter', sans-serif; }
       
+      /* Animated border trail - @property for angle */
+      @property --angle {
+        syntax: "<angle>";
+        initial-value: 0deg;
+        inherits: false;
+      }
+      
+      /* Animated border trail animation */
+      @keyframes trail {
+        0% { --angle: 0deg; }
+        100% { --angle: 360deg; }
+      }
+      
       /* Custom scrollbar for carousel */
       .carousel-scrollbar::-webkit-scrollbar {
         height: 10px;
@@ -68,6 +81,21 @@
       .carousel-item {
         scroll-snap-align: start;
         scroll-snap-stop: always;
+      }
+      
+      /* Animated border trail for carousel cards */
+      .animated-border-trail {
+        position: relative;
+        overflow: hidden;
+        border-radius: 1rem;
+        padding: 1px;
+        background: conic-gradient(from var(--angle) at 50% 50%, transparent 90%, white);
+        animation: trail 10s linear infinite;
+      }
+      
+      .animated-border-trail > * {
+        position: relative;
+        border-radius: 0.9375rem; /* 15px */
       }
     </style>
     <script>
