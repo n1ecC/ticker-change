@@ -57,6 +57,18 @@
       .dark .carousel-scrollbar {
         scrollbar-color: #475569 #1e293b;
       }
+      
+      /* Scroll snap for carousel */
+      .carousel-snap {
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      }
+      
+      .carousel-item {
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+      }
     </style>
     <script>
       // Initialize dark mode before page load to prevent flash

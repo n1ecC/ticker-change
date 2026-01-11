@@ -213,7 +213,7 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 row=2, col=1
             )
             
-            # Update layout (no range slider)
+            # Update layout (no range slider) with smooth transitions
             fig.update_layout(
                 template='plotly_white',
                 height=600,
@@ -222,7 +222,12 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 autosize=True,
                 margin=dict(l=60, r=60, t=60, b=80),
                 showlegend=False,
-                xaxis_rangeslider_visible=False
+                xaxis_rangeslider_visible=False,
+                # Enable smooth transitions for chart updates
+                transition=dict(
+                    duration=500,  # Transition duration in milliseconds
+                    easing='cubic-in-out'  # Easing function for smooth animation
+                )
             )
             
             # Update y-axes labels
