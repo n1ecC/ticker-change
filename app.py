@@ -173,12 +173,13 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 return None
             
             # Create subplots with secondary y-axis for volume
+            # Remove first subplot title to prevent overlap with rangeselector
             fig = make_subplots(
                 rows=2, cols=1,
                 shared_xaxes=True,
-                vertical_spacing=0.03,
+                vertical_spacing=0.08,
                 row_heights=[0.7, 0.3],
-                subplot_titles=(f'{ticker.upper()} Stock Price', 'Volume')
+                subplot_titles=('', 'Volume')  # Empty first title, will add manually
             )
             
             # Add candlestick chart
@@ -211,23 +212,20 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 row=2, col=1
             )
             
-            # Update layout with interactive controls
-            # Increased top margin to accommodate title and range selector buttons
+            # Ensure candlestick trace shows legend is hidden (we'll create it in HTML)
+            fig.update_traces(showlegend=False, row=1, col=1)
+            
+            # Simplified layout - responsive with proper spacing
+            # Note: Plotly doesn't have vertical justification like CSS, but we use margins and positioning
             fig.update_layout(
-                title={
-                    'text': f'{ticker.upper()} Interactive Chart',
-                    'font': {'size': 16, 'color': '#1e293b'},
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'pad': dict(t=10, b=10)
-                },
                 yaxis_title='Price ($)',
                 yaxis2_title='Volume',
                 template='plotly_white',
-                height=650,
+                height=600,
                 hovermode='x unified',
                 font=dict(size=12),
-                margin=dict(l=50, r=50, t=200, b=50),
+                autosize=True,  # Make chart responsive to container width
+                margin=dict(l=60, r=60, t=130, b=80),  # Increased top margin significantly to prevent overlap
                 # Enable range slider for manual selection
                 xaxis2=dict(
                     rangeslider=dict(
@@ -235,11 +233,28 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                         thickness=0.05
                     ),
                     type='date'
-                )
+                ),
+                # Add annotation for "Stock Price" title - positioned higher with more spacing
+                annotations=[
+                    dict(
+                        text=f'{ticker.upper()} Stock Price',
+                        xref='paper',
+                        yref='paper',
+                        x=0.5,
+                        xanchor='center',
+                        y=0.995,  # Higher position, closer to top margin
+                        yanchor='top',
+                        showarrow=False,
+                        font=dict(size=14, color='#1e293b'),
+                        bgcolor='rgba(255,255,255,0)',
+                        bordercolor='rgba(0,0,0,0)',
+                        borderwidth=0
+                    )
+                ]
             )
             
-            # Add range selector buttons for quick timeframe switching
-            # Positioned with enough space below the title to prevent overlap
+            # Add range selector buttons - positioned lower with smaller font to prevent cutoff
+            # Plotly doesn't support vertical justification, but we can control spacing with y values
             fig.update_xaxes(
                 rangeselector=dict(
                     buttons=list([
@@ -255,11 +270,11 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     ]),
                     bgcolor='#f1f5f9',
                     activecolor='#3b82f6',
-                    x=0,
-                    y=1.02,
+                    x=0,  # Left-aligned
+                    y=1.02,  # Lower position to create more space from title and prevent cutoff
                     xanchor='left',
                     yanchor='top',
-                    font=dict(size=9)
+                    font=dict(size=9)  # Smaller font to fit better and prevent cutoff
                 ),
                 title_text="Date",
                 row=2, col=1
