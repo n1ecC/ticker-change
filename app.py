@@ -148,6 +148,83 @@ def calculate_weekdays_ago(num_weekdays):
     
     return current_date
 
+def get_price_ranges(ticker, retries=2):
+    """Get all-time and 52-week high/low price ranges
+    
+    Args:
+        ticker: Stock ticker symbol
+        retries: Number of retry attempts if data fetch fails
+    
+    Returns:
+        Dictionary with 'all_time_high', 'all_time_low', '52_week_high', '52_week_low'
+        or None if fetch fails
+    """
+    for attempt in range(retries):
+        try:
+            stock = yf.Ticker(ticker.upper())
+            
+            # Get all-time data (max period)
+            all_time_hist = stock.history(period="max")
+            if all_time_hist.empty:
+                if attempt < retries - 1:
+                    time.sleep(0.5)
+                    continue
+                return None
+            
+            # Get 52-week data
+            year_hist = stock.history(period="1y")
+            if year_hist.empty:
+                if attempt < retries - 1:
+                    time.sleep(0.5)
+                    continue
+                return None
+            
+            # Calculate ranges
+            all_time_high = float(all_time_hist['High'].max())
+            all_time_low = float(all_time_hist['Low'].min())
+            week52_high = float(year_hist['High'].max())
+            week52_low = float(year_hist['Low'].min())
+            
+            # Calculate ATR for last month (30 days)
+            month_hist = stock.history(period="1mo")
+            atr_value = None
+            if not month_hist.empty and len(month_hist) > 1:
+                # Calculate True Range for each day
+                # True Range = max(High - Low, |High - Previous Close|, |Low - Previous Close|)
+                month_hist = month_hist.copy()
+                month_hist['Previous Close'] = month_hist['Close'].shift(1)
+                
+                # Calculate the three components
+                high_low = month_hist['High'] - month_hist['Low']
+                high_prev_close = abs(month_hist['High'] - month_hist['Previous Close'])
+                low_prev_close = abs(month_hist['Low'] - month_hist['Previous Close'])
+                
+                # True Range is the maximum of the three
+                true_range = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
+                
+                # ATR is the average of True Range (excluding first day which has NaN for previous close)
+                atr_value = float(true_range.mean())
+            
+            result = {
+                'all_time_high': round(all_time_high, 2),
+                'all_time_low': round(all_time_low, 2),
+                '52_week_high': round(week52_high, 2),
+                '52_week_low': round(week52_low, 2)
+            }
+            
+            if atr_value is not None:
+                result['atr_30d'] = round(atr_value, 2)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Price ranges fetch attempt {attempt + 1} failed for {ticker}: {e}")
+            if attempt < retries - 1:
+                time.sleep(0.5)
+            continue
+    
+    return None
+
 def generate_stock_chart(ticker, period="5y", retries=2):
     """Generate an interactive Plotly price chart with timeframe controls
     
@@ -458,6 +535,11 @@ def stock_page():
     
     if ticker:
         data = get_stock_data(ticker)
+        
+        # Get price ranges (all-time and 52-week) - always fetch for display
+        price_ranges = get_price_ranges(ticker)
+        if price_ranges:
+            data['price_ranges'] = price_ranges
         
         # Handle custom lookback (weekdays or days)
         custom_result = None
