@@ -148,15 +148,16 @@ def calculate_weekdays_ago(num_weekdays):
     
     return current_date
 
-def get_price_ranges(ticker, retries=2):
+def get_price_ranges(ticker, current_price=None, retries=2):
     """Get all-time and 52-week high/low price ranges
     
     Args:
         ticker: Stock ticker symbol
+        current_price: Current price for calculating ATR percentage (optional)
         retries: Number of retry attempts if data fetch fails
     
     Returns:
-        Dictionary with 'all_time_high', 'all_time_low', '52_week_high', '52_week_low'
+        Dictionary with 'all_time_high', 'all_time_low', '52_week_high', '52_week_low', 'atr_30d', 'atr_30d_percent'
         or None if fetch fails
     """
     for attempt in range(retries):
@@ -214,6 +215,10 @@ def get_price_ranges(ticker, retries=2):
             
             if atr_value is not None:
                 result['atr_30d'] = round(atr_value, 2)
+                # Calculate ATR as percentage if current_price is provided
+                if current_price and current_price > 0:
+                    atr_percent = (atr_value / current_price) * 100
+                    result['atr_30d_percent'] = round(atr_percent, 2)
             
             return result
             
@@ -537,7 +542,7 @@ def stock_page():
         data = get_stock_data(ticker)
         
         # Get price ranges (all-time and 52-week) - always fetch for display
-        price_ranges = get_price_ranges(ticker)
+        price_ranges = get_price_ranges(ticker, current_price=data.get('current_price'))
         if price_ranges:
             data['price_ranges'] = price_ranges
         

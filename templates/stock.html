@@ -209,7 +209,7 @@
                         <div class="flex justify-between items-center py-2">
                             <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">ATR (30 Days)</span>
                             <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                ${{ "%.2f"|format(data.price_ranges.atr_30d) }}
+                                ${{ "%.2f"|format(data.price_ranges.atr_30d) }}{% if data.price_ranges.atr_30d_percent %} | {{ "%.2f"|format(data.price_ranges.atr_30d_percent) }}%{% endif %}
                             </span>
                         </div>
                         {% endif %}
