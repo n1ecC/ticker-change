@@ -83,6 +83,44 @@
         scroll-snap-stop: always;
       }
       
+      /* Shiny card hover effect (GitHub-style) */
+      .shiny-card {
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .shiny-card-overlay {
+        position: absolute;
+        width: 16rem;
+        height: 16rem;
+        border-radius: 9999px;
+        background: white;
+        opacity: 0;
+        pointer-events: none;
+        background-blend-mode: soft-light;
+        filter: blur(3rem);
+        transition: opacity 0.3s ease;
+        transform: translate(var(--shiny-x, 0px), var(--shiny-y, 0px));
+        z-index: 0;
+      }
+      
+      .shiny-card:hover .shiny-card-overlay {
+        opacity: 0.2;
+      }
+      
+      .dark .shiny-card-overlay {
+        opacity: 0;
+      }
+      
+      .dark .shiny-card:hover .shiny-card-overlay {
+        opacity: 0.15;
+      }
+      
+      .shiny-card-content {
+        position: relative;
+        z-index: 1;
+      }
+      
       /* Animated border trail for carousel cards */
       .animated-border-trail {
         position: relative;
