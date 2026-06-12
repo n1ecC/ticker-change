@@ -1,48 +1,51 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 transition-colors duration-200">
-    <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white mb-4 sm:mb-6">Stock Tracker</h1>
+<div class="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 transition-colors duration-200">
+    <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mb-4 sm:mb-6">Stock Tracker</h1>
     <form action="/stock" method="GET" class="flex flex-col sm:flex-row gap-3">
-        <input type="text" name="ticker" 
-               placeholder="Enter stock ticker (e.g., AAPL)" 
-               value="{{ data.ticker if data.ticker }}" 
+        <input type="text" name="ticker"
+               placeholder="Ticker symbol — e.g. AAPL"
+               value="{{ data.ticker if data.ticker }}"
                required
-               class="flex-1 px-4 py-3 text-base sm:text-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
-        <button type="submit" 
-                class="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+               class="flex-1 px-4 py-3 text-base sm:text-lg font-mono uppercase placeholder:normal-case placeholder:font-sans bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition">
+        <button type="submit"
+                class="w-full sm:w-auto px-6 py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg transition">
             Get Stock Data
         </button>
     </form>
 </div>
 
 {% if data.error %}
-<div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 sm:p-6 rounded-lg">
-    <h2 class="text-lg sm:text-xl font-semibold text-red-900 dark:text-red-300 mb-2">Error: {{ data.error }}</h2>
-    <p class="text-sm sm:text-base text-red-700 dark:text-red-400">Please check the ticker symbol and try again.</p>
+<div class="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 border-l-4 border-l-rose-500 p-4 sm:p-6 rounded-lg">
+    <h2 class="text-lg sm:text-xl font-semibold text-rose-900 dark:text-rose-300 mb-2">Error: {{ data.error }}</h2>
+    <p class="text-sm sm:text-base text-rose-700 dark:text-rose-400">Please check the ticker symbol and try again.</p>
 </div>
 {% else %}
-<div class="shiny-card bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-l-4 border-blue-500 dark:border-blue-400 p-4 sm:p-6 rounded-lg mb-6 sm:mb-8" id="ticker-card">
+<div class="shiny-card bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 border-l-2 border-l-amber-500 p-4 sm:p-6 rounded-xl shadow-sm mb-6 sm:mb-8" id="ticker-card">
     <div class="shiny-card-overlay"></div>
     <div class="shiny-card-content flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-        <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white break-words">{{ data.ticker }} - <span class="text-blue-600 dark:text-blue-400">${{ "%.2f"|format(data.current_price) }}</span></h2>
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-1">Current Price</p>
+            <h2 class="font-mono text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-zinc-50 break-words">{{ data.ticker }} <span class="text-amber-600 dark:text-amber-400">${{ "%.2f"|format(data.current_price) }}</span></h2>
+        </div>
         <div class="flex flex-col items-stretch sm:items-end gap-2">
-            <a href="https://finviz.com/quote.ashx?t={{ data.ticker }}" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+            <a href="https://finviz.com/quote.ashx?t={{ data.ticker }}" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 text-sm font-medium rounded-lg transition whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
                 View on Finviz
             </a>
-            <a href="https://marketchameleon.com/Overview/{{ data.ticker }}/Summary/" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+            <a href="https://marketchameleon.com/Overview/{{ data.ticker }}/Summary/" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 text-sm font-medium rounded-lg transition whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
                 MarketChameleon
             </a>
-            <a href="https://apewisdom.io/stocks/{{ data.ticker }}/" target="_blank" rel="noopener noreferrer" 
-               class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg whitespace-nowrap">
+            <a href="https://apewisdom.io/stocks/{{ data.ticker }}/" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center justify-center gap-2 px-4 py-2 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 text-sm font-medium rounded-lg transition whitespace-nowrap">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
@@ -55,7 +58,7 @@
 <!-- Horizontal Carousel Layout -->
 <div class="relative mb-6 sm:mb-8">
     <!-- Scroll indicator for mobile -->
-    <div class="lg:hidden flex items-center justify-center gap-2 mb-3 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+    <div class="lg:hidden flex items-center justify-center gap-2 mb-3 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"></path>
         </svg>
@@ -68,29 +71,30 @@
         <div class="flex items-stretch gap-4 sm:gap-6 min-w-max lg:grid lg:grid-cols-3 lg:min-w-0">
         <!-- Percentage Change Table -->
             <div class="animated-border-trail carousel-item w-[85vw] sm:w-96 lg:w-auto flex-shrink-0">
-            <div class="w-full h-full bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden transition-colors duration-200 flex flex-col min-h-[320px] lg:min-h-[480px] items-stretch">
-            <div class="bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-3 sm:py-4">
-                <h3 class="text-lg sm:text-xl font-bold text-white">Percentage Change</h3>
+            <div class="w-full h-full bg-white dark:bg-zinc-900 overflow-hidden transition-colors duration-200 flex flex-col min-h-[320px] lg:min-h-[480px] items-stretch">
+            <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <h3 class="text-sm font-semibold uppercase tracking-widest text-zinc-900 dark:text-zinc-100">Percentage Change</h3>
             </div>
             <div class="p-3 sm:p-4 flex-1 overflow-x-auto">
                 <table class="w-full">
-                    <thead class="bg-slate-50 dark:bg-slate-700">
-                        <tr>
-                            <th class="px-3 sm:px-4 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
-                            <th class="px-3 sm:px-4 py-2 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change (%)</th>
+                    <thead>
+                        <tr class="border-b border-zinc-200 dark:border-zinc-800">
+                            <th class="px-3 sm:px-4 py-2 text-left text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Period</th>
+                            <th class="px-3 sm:px-4 py-2 text-right text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Change (%)</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200 dark:divide-slate-600">
+                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
                         {% for row in data.percentage_data %}
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
-                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-semibold
+                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition">
+                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ row.period }}</td>
+                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-mono font-medium
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
-                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
+                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-rose-600 dark:text-rose-400' }}
                                 {% elif row.value == 'N/A' %}
-                                    text-slate-400 dark:text-slate-500
+                                    text-zinc-400 dark:text-zinc-600
                                 {% else %}
-                                    text-slate-900 dark:text-slate-200
+                                    text-zinc-900 dark:text-zinc-100
                                 {% endif %}">
                                 {% if row.period == 'Current Price' %}
                                     {{ row.value }}
@@ -107,32 +111,33 @@
             </div>
             </div>
         </div>
-        
+
         <!-- Net Change Table -->
         <div class="animated-border-trail carousel-item w-[85vw] sm:w-96 lg:w-auto flex-shrink-0">
-        <div class="w-full h-full bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden transition-colors duration-200">
-            <div class="bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-3 sm:py-4">
-                <h3 class="text-lg sm:text-xl font-bold text-white">Net Change ($)</h3>
+        <div class="w-full h-full bg-white dark:bg-zinc-900 overflow-hidden transition-colors duration-200">
+            <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <h3 class="text-sm font-semibold uppercase tracking-widest text-zinc-900 dark:text-zinc-100">Net Change ($)</h3>
             </div>
             <div class="p-3 sm:p-4 flex-1 overflow-x-auto">
                 <table class="w-full">
-                    <thead class="bg-slate-50 dark:bg-slate-700">
-                        <tr>
-                            <th class="px-3 sm:px-4 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Period</th>
-                            <th class="px-3 sm:px-4 py-2 text-right text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Change ($)</th>
+                    <thead>
+                        <tr class="border-b border-zinc-200 dark:border-zinc-800">
+                            <th class="px-3 sm:px-4 py-2 text-left text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Period</th>
+                            <th class="px-3 sm:px-4 py-2 text-right text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Change ($)</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200 dark:divide-slate-600">
+                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
                         {% for row in data.net_change_data %}
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-slate-900 dark:text-slate-200">{{ row.period }}</td>
-                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-semibold
+                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition">
+                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ row.period }}</td>
+                            <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-mono font-medium
                                 {% if row.value != 'N/A' and row.period != 'Current Price' %}
-                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-red-600 dark:text-red-400' }}
+                                    {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-rose-600 dark:text-rose-400' }}
                                 {% elif row.value == 'N/A' %}
-                                    text-slate-400 dark:text-slate-500
+                                    text-zinc-400 dark:text-zinc-600
                                 {% else %}
-                                    text-slate-900 dark:text-slate-200
+                                    text-zinc-900 dark:text-zinc-100
                                 {% endif %}">
                                 {% if row.period == 'Current Price' %}
                                     {{ row.value }}
@@ -149,67 +154,68 @@
             </div>
             </div>
         </div>
-        
+
         <!-- Custom Weekdays Lookback -->
         <div class="animated-border-trail carousel-item w-[85vw] sm:w-96 lg:w-auto flex-shrink-0">
-        <div class="w-full h-full bg-white dark:bg-slate-800 rounded-2xl shadow-xl overflow-hidden transition-colors duration-200 flex flex-col min-h-[320px] lg:min-h-[480px]">
-            <div class="bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-3 sm:py-4">
-                <h3 class="text-lg sm:text-xl font-bold text-white">Custom Lookback</h3>
+        <div class="w-full h-full bg-white dark:bg-zinc-900 overflow-hidden transition-colors duration-200 flex flex-col min-h-[320px] lg:min-h-[480px]">
+            <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <h3 class="text-sm font-semibold uppercase tracking-widest text-zinc-900 dark:text-zinc-100">Custom Lookback</h3>
             </div>
             <div class="p-4 sm:p-6 flex-1">
                 <form action="/stock" method="GET" class="space-y-4">
                     <input type="hidden" name="ticker" value="{{ data.ticker }}">
                     <div>
-                        <label for="weekdays" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        <label for="weekdays" class="block text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             Weekdays Ago
                         </label>
-                        <input type="number" 
-                               id="weekdays" 
-                               name="weekdays" 
-                               min="1" 
-                               max="5000" 
+                        <input type="number"
+                               id="weekdays"
+                               name="weekdays"
+                               min="1"
+                               max="5000"
                                placeholder="e.g., 10, 30, 250"
                                value="{% if data.custom_result and data.custom_result.type == 'weekdays' %}{{ data.custom_result.days }}{% endif %}"
-                               class="w-full px-4 py-2 text-base border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                               class="w-full px-4 py-2 text-base font-mono bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition">
                     </div>
                     <div>
-                        <label for="days" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        <label for="days" class="block text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             Days Ago
                         </label>
-                        <input type="number" 
-                               id="days" 
-                               name="days" 
-                               min="1" 
-                               max="5000" 
+                        <input type="number"
+                               id="days"
+                               name="days"
+                               min="1"
+                               max="5000"
                                placeholder="e.g., 10, 30, 250"
                                value="{% if data.custom_result and data.custom_result.type == 'days' %}{{ data.custom_result.days }}{% endif %}"
-                               class="w-full px-4 py-2 text-base border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                               class="w-full px-4 py-2 text-base font-mono bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition">
                     </div>
-                    <button type="submit" 
-                            class="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                    <button type="submit"
+                            class="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg transition">
                         Calculate
                     </button>
                 </form>
-                
+
                 {% if data.price_ranges %}
-                <div class="mt-4 border-t border-slate-200 dark:border-slate-600 pt-4">
+                <div class="mt-4 border-t border-zinc-200 dark:border-zinc-800 pt-4">
                     <div class="space-y-3">
-                        <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                            <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">All-Time Low → High</span>
-                            <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                            <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">All-Time Low → High</span>
+                            <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">
                                 ${{ "%.2f"|format(data.price_ranges.all_time_low) }} → ${{ "%.2f"|format(data.price_ranges.all_time_high) }}
                             </span>
                         </div>
-                        <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                            <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">52-Week Low → High</span>
-                            <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                            <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">52-Week Low → High</span>
+                            <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">
                                 ${{ "%.2f"|format(data.price_ranges['52_week_low']) }} → ${{ "%.2f"|format(data.price_ranges['52_week_high']) }}
                             </span>
                         </div>
                         {% if data.price_ranges.atr_30d %}
                         <div class="flex justify-between items-center py-2">
-                            <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">ATR (30 Days)</span>
-                            <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">ATR (30 Days)</span>
+                            <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">
                                 ${{ "%.2f"|format(data.price_ranges.atr_30d) }}{% if data.price_ranges.atr_30d_percent %} | {{ "%.2f"|format(data.price_ranges.atr_30d_percent) }}%{% endif %}
                             </span>
                         </div>
@@ -217,51 +223,51 @@
                     </div>
                 </div>
                 {% endif %}
-                
+
                 {% if data.custom_result %}
                     {% if data.custom_result.error %}
-                        <div class="mt-4 p-3 sm:p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg">
-                            <p class="text-xs sm:text-sm text-red-700 dark:text-red-400 font-medium">{{ data.custom_result.error }}</p>
+                        <div class="mt-4 p-3 sm:p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 border-l-4 border-l-rose-500 rounded-lg">
+                            <p class="text-xs sm:text-sm text-rose-700 dark:text-rose-400 font-medium">{{ data.custom_result.error }}</p>
                         </div>
                     {% else %}
                         <div class="mt-4 sm:mt-6 space-y-4">
-                            <div class="border-t border-slate-200 dark:border-slate-600 pt-4">
-                                <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
+                            <div class="border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                                <p class="text-[11px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-3">
                                     {{ data.custom_result.days }} {{ 'weekdays' if data.custom_result.type == 'weekdays' else 'days' }} ago
                                 </p>
-                                <p class="text-xs text-slate-600 dark:text-slate-400 mb-4">{{ data.custom_result.target_date }}</p>
-                                
+                                <p class="text-xs font-mono text-zinc-500 dark:text-zinc-400 mb-4">{{ data.custom_result.target_date }}</p>
+
                                 <div class="space-y-3">
-                                    <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Historical Price</span>
-                                        <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">${{ "%.2f"|format(data.custom_result.historical_price) }}</span>
+                                    <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">Historical Price</span>
+                                        <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">${{ "%.2f"|format(data.custom_result.historical_price) }}</span>
                                     </div>
-                                    <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Current Price</span>
-                                        <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">${{ "%.2f"|format(data.custom_result.current_price) }}</span>
+                                    <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">Current Price</span>
+                                        <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">${{ "%.2f"|format(data.custom_result.current_price) }}</span>
                                     </div>
-                                    <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Net Change</span>
-                                        <span class="text-xs sm:text-sm font-bold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
+                                    <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">Net Change</span>
+                                        <span class="text-xs sm:text-sm font-mono font-semibold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-rose-600 dark:text-rose-400' }}">
                                             {{ '+' if data.custom_result.is_positive else '' }}${{ "%.2f"|format(data.custom_result.net_change) }}{% if data.custom_result.atr_percent %} | {{ "%.2f"|format(data.custom_result.atr_percent) }}% ATR{% endif %}
                                         </span>
                                     </div>
-                                    <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">% Change</span>
-                                        <span class="text-base sm:text-lg font-bold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-red-600 dark:text-red-400' }}">
+                                    <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">% Change</span>
+                                        <span class="text-base sm:text-lg font-mono font-semibold {{ 'text-emerald-600 dark:text-emerald-400' if data.custom_result.is_positive else 'text-rose-600 dark:text-rose-400' }}">
                                             {{ '+' if data.custom_result.is_positive else '' }}{{ "%.2f"|format(data.custom_result.percentage_change) }}%
                                         </span>
                                     </div>
                                     {% if data.custom_result.all_time_high %}
-                                    <div class="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-700">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">All-Time Low → High</span>
-                                        <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                    <div class="flex justify-between items-center py-2 border-b border-zinc-100 dark:border-zinc-800">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">All-Time Low → High</span>
+                                        <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">
                                             ${{ "%.2f"|format(data.custom_result.all_time_low) }} → ${{ "%.2f"|format(data.custom_result.all_time_high) }}
                                         </span>
                                     </div>
                                     <div class="flex justify-between items-center py-2">
-                                        <span class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">52-Week Low → High</span>
-                                        <span class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        <span class="text-xs sm:text-sm font-medium text-zinc-500 dark:text-zinc-400">52-Week Low → High</span>
+                                        <span class="text-xs sm:text-sm font-mono font-medium text-zinc-900 dark:text-zinc-100">
                                             ${{ "%.2f"|format(data.custom_result['52_week_low']) }} → ${{ "%.2f"|format(data.custom_result['52_week_high']) }}
                                         </span>
                                     </div>
@@ -278,28 +284,30 @@
     </div>
 
     {% if data.chart_html %}
-    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 transition-colors duration-200 mt-4 sm:mt-6 w-full">
+    <div class="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 transition-colors duration-200 mt-4 sm:mt-6 w-full">
         <!-- Chart Title -->
-        <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mb-4 text-center">{{ data.ticker }} Price Chart</h2>
-        
-        <!-- TradingView Button -->
-        <div class="mb-4 flex justify-center">
-            <a href="https://www.tradingview.com/chart/?symbol={{ data.ticker }}" 
-               target="_blank" 
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
+            <div class="flex items-center gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <h2 class="text-sm font-semibold uppercase tracking-widest text-zinc-900 dark:text-zinc-100">{{ data.ticker }} Price Chart</h2>
+            </div>
+            <!-- TradingView Button -->
+            <a href="https://www.tradingview.com/chart/?symbol={{ data.ticker }}"
+               target="_blank"
                rel="noopener noreferrer"
                id="tradingview-link"
-               class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold rounded-lg transition shadow-md hover:shadow-lg">
+               class="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 text-sm font-medium rounded-lg transition">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                 </svg>
                 Open in TradingView
             </a>
         </div>
-        
+
         <!-- Chart Container - spans full width by negating parent padding -->
         <div class="w-full overflow-x-auto" style="margin-left: calc(-1 * 1rem); margin-right: calc(-1 * 1rem); width: calc(100% + 2rem);">
-            <div id="plotly-chart" 
-                 class="w-full" 
+            <div id="plotly-chart"
+                 class="w-full"
                  style="width: 100%;"
                  data-ticker="{{ data.ticker if data.ticker else '' }}"
                  data-start-date="{{ data.chart_date_range.start if data.chart_date_range else '' }}"
@@ -315,7 +323,7 @@
 {% endif %}
 
 <div class="mt-8 sm:mt-12 text-center">
-    <a href="/" class="inline-flex items-center gap-2 text-sm sm:text-base text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition">
+    <a href="/" class="inline-flex items-center gap-2 text-sm sm:text-base text-zinc-500 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 font-medium transition">
         <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
         </svg>
@@ -330,23 +338,23 @@
 document.addEventListener('DOMContentLoaded', function() {
     const tickerCard = document.getElementById('ticker-card');
     const overlay = tickerCard?.querySelector('.shiny-card-overlay');
-    
+
     if (tickerCard && overlay) {
         const updateOverlayPosition = (event) => {
             const rect = tickerCard.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
-            
+
             // Center the overlay on the mouse position
             const overlayWidth = 256; // 16rem = 256px
             const overlayHeight = 256;
             const xOffset = x - overlayWidth / 2;
             const yOffset = y - overlayHeight / 2;
-            
+
             overlay.style.setProperty('--shiny-x', `${xOffset}px`);
             overlay.style.setProperty('--shiny-y', `${yOffset}px`);
         };
-        
+
         tickerCard.addEventListener('mousemove', updateOverlayPosition);
         tickerCard.addEventListener('touchmove', function(e) {
             if (e.touches.length > 0) {
@@ -364,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function updateTradingViewLink(timeframe) {
     const link = document.getElementById('tradingview-link');
     if (!link) return;
-    
+
     // Map Plotly timeframes to TradingView intervals
     const timeframeMap = {
         '1D': '1',
@@ -377,13 +385,51 @@ function updateTradingViewLink(timeframe) {
         '5Y': '1M',
         'All': '1M'
     };
-    
+
     const interval = timeframeMap[timeframe] || '1';
     const ticker = '{{ data.ticker if data.ticker else "" }}';
     if (ticker) {
         link.href = `https://www.tradingview.com/chart/?symbol=${ticker}&interval=${interval}`;
     }
 }
+
+// Theme the Plotly chart to match the app palette (light/dark aware)
+function applyChartTheme() {
+    if (!window.Plotly) return;
+    const graphDiv = document.querySelector('#plotly-chart .js-plotly-plot');
+    if (!graphDiv || !graphDiv.data) return;
+
+    const dark = document.documentElement.classList.contains('dark');
+    const grid = dark ? '#27272a' : '#e4e4e7';
+    const text = dark ? '#a1a1aa' : '#52525b';
+
+    Plotly.relayout(graphDiv, {
+        'paper_bgcolor': 'rgba(0,0,0,0)',
+        'plot_bgcolor': 'rgba(0,0,0,0)',
+        'font.color': text,
+        'font.family': 'Inter, sans-serif',
+        'hoverlabel.bgcolor': dark ? '#18181b' : '#ffffff',
+        'hoverlabel.bordercolor': grid,
+        'hoverlabel.font.color': dark ? '#e4e4e7' : '#27272a',
+        'xaxis.gridcolor': grid,
+        'xaxis2.gridcolor': grid,
+        'yaxis.gridcolor': grid,
+        'yaxis2.gridcolor': grid,
+        'xaxis.linecolor': grid,
+        'xaxis2.linecolor': grid,
+        'yaxis.linecolor': grid,
+        'yaxis2.linecolor': grid,
+        'xaxis2.rangeselector.bgcolor': dark ? '#18181b' : '#f4f4f5',
+        'xaxis2.rangeselector.activecolor': '#f59e0b',
+        'xaxis2.rangeselector.bordercolor': grid,
+        'xaxis2.rangeselector.font.color': text,
+        'annotations[0].font.color': text,
+        'annotations[1].font.color': text
+    });
+}
+
+// Re-theme the chart when dark mode is toggled
+new MutationObserver(applyChartTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
 // Chart pan handling for dynamic data loading
 let chartDataRange = {
@@ -394,16 +440,16 @@ let isLoadingData = false;
 
 function updateChartWithNewData(ticker, newData) {
     if (!window.Plotly) return;
-    
+
     const plotlyDiv = document.querySelector('#plotly-chart > div');
     if (!plotlyDiv || !plotlyDiv.data) return;
-    
+
     const graphDiv = plotlyDiv;
-    
+
     // Get current data
     const currentData = plotlyDiv.data;
     if (!currentData || currentData.length < 2) return;
-    
+
     // Convert new data to Plotly format
     const newDates = newData.map(d => d.date);
     const newOpen = newData.map(d => d.open);
@@ -411,8 +457,8 @@ function updateChartWithNewData(ticker, newData) {
     const newLow = newData.map(d => d.low);
     const newClose = newData.map(d => d.close);
     const newVolume = newData.map(d => d.volume);
-    const newColors = newData.map(d => d.close >= d.open ? '#26a69a' : '#ef5350');
-    
+    const newColors = newData.map(d => d.close >= d.open ? '#10b981' : '#f43f5e');
+
     // Get existing data
     const existingDates = currentData[0].x || [];
     const existingOpen = currentData[0].open || [];
@@ -421,7 +467,7 @@ function updateChartWithNewData(ticker, newData) {
     const existingClose = currentData[0].close || [];
     const existingVolume = currentData[1].y || [];
     const existingColors = currentData[1].marker?.color || [];
-    
+
     // Merge data (prepend new data)
     const mergedDates = [...newDates, ...existingDates];
     const mergedOpen = [...newOpen, ...existingOpen];
@@ -430,7 +476,7 @@ function updateChartWithNewData(ticker, newData) {
     const mergedClose = [...newClose, ...existingClose];
     const mergedVolume = [...newVolume, ...existingVolume];
     const mergedColors = [...newColors, ...existingColors];
-    
+
     // Update candlestick trace
     Plotly.restyle(graphDiv, {
         x: [mergedDates],
@@ -439,14 +485,14 @@ function updateChartWithNewData(ticker, newData) {
         low: [mergedLow],
         close: [mergedClose]
     }, [0]);
-    
+
     // Update volume trace
     Plotly.restyle(graphDiv, {
         x: [mergedDates],
         y: [mergedVolume],
         'marker.color': [mergedColors]
     }, [1]);
-    
+
     // Update date range
     if (newData.length > 0) {
         chartDataRange.start = newData[0].date;
@@ -461,21 +507,24 @@ function updateChartWithNewData(ticker, newData) {
 document.addEventListener('DOMContentLoaded', function() {
     const chartContainer = document.getElementById('plotly-chart');
     if (!chartContainer) return;
-    
+
     const ticker = chartContainer.getAttribute('data-ticker');
     const startDate = chartContainer.getAttribute('data-start-date');
     const endDate = chartContainer.getAttribute('data-end-date');
-    
+
     chartDataRange.start = startDate;
     chartDataRange.end = endDate;
-    
+
     // Wait for Plotly to load
     setTimeout(function() {
         const plotlyDiv = document.querySelector('#plotly-chart > div');
         if (!plotlyDiv) return;
-        
+
         const graphDiv = plotlyDiv;
-        
+
+        // Apply app palette to the freshly rendered chart
+        applyChartTheme();
+
         // Listen for clicks on rangeselector buttons
         plotlyDiv.addEventListener('click', function(event) {
             const target = event.target;
@@ -483,32 +532,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateTradingViewLink('1M');
             }
         });
-        
+
         // Listen for pan events
         graphDiv.on('plotly_relayout', function(eventData) {
             if (isLoadingData || !ticker) return;
-            
+
             // Check if x-axis range changed (panning)
             if (eventData['xaxis.range[0]'] && eventData['xaxis.range[1]']) {
                 const visibleStart = new Date(eventData['xaxis.range[0]']);
                 const dataStart = new Date(chartDataRange.start);
-                
+
                 // Check if panning backwards (before current data start)
                 // Add 2 days buffer to account for weekends/holidays
                 const bufferDays = 2 * 24 * 60 * 60 * 1000;
                 if (visibleStart < new Date(dataStart.getTime() - bufferDays)) {
                     isLoadingData = true;
-                    
+
                     // Calculate date range to fetch (extend backwards)
                     const fetchEndDate = new Date(dataStart);
                     fetchEndDate.setDate(fetchEndDate.getDate() - 1); // Day before current start
                     const fetchStartDate = new Date(fetchEndDate);
                     fetchStartDate.setFullYear(fetchStartDate.getFullYear() - 1); // Fetch 1 year back
-                    
+
                     // Fetch new data
                     const startDateStr = fetchStartDate.toISOString().split('T')[0];
                     const endDateStr = fetchEndDate.toISOString().split('T')[0];
-                    
+
                     fetch(`/api/chart-data/${ticker}?start_date=${startDateStr}&end_date=${endDateStr}`)
                         .then(response => response.json())
                         .then(data => {
