@@ -10,91 +10,94 @@
         darkMode: 'class',
         theme: {
           extend: {
-            colors: {
-              primary: '#0f172a',
-              secondary: '#1e293b',
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
             }
           }
         }
       }
     </script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
       body { font-family: 'Inter', sans-serif; }
-      
+
+      /* Tabular figures so numbers align in tables */
+      .font-mono { font-variant-numeric: tabular-nums; }
+
       /* Animated border trail - @property for angle */
       @property --angle {
         syntax: "<angle>";
         initial-value: 0deg;
         inherits: false;
       }
-      
+
       /* Animated border trail animation */
       @keyframes trail {
         0% { --angle: 0deg; }
         100% { --angle: 360deg; }
       }
-      
+
       /* Custom scrollbar for carousel */
       .carousel-scrollbar::-webkit-scrollbar {
         height: 10px;
       }
       .carousel-scrollbar::-webkit-scrollbar-track {
-        background-color: #f1f5f9;
+        background-color: #f4f4f5;
         border-radius: 5px;
       }
       .carousel-scrollbar::-webkit-scrollbar-thumb {
-        background-color: #cbd5e1;
+        background-color: #d4d4d8;
         border-radius: 5px;
       }
       .carousel-scrollbar::-webkit-scrollbar-thumb:hover {
-        background-color: #94a3b8;
+        background-color: #a1a1aa;
       }
-      
+
       /* Dark mode scrollbar */
       .dark .carousel-scrollbar::-webkit-scrollbar-track {
-        background-color: #1e293b;
+        background-color: #18181b;
       }
       .dark .carousel-scrollbar::-webkit-scrollbar-thumb {
-        background-color: #475569;
+        background-color: #3f3f46;
       }
       .dark .carousel-scrollbar::-webkit-scrollbar-thumb:hover {
-        background-color: #64748b;
+        background-color: #52525b;
       }
-      
+
       /* Firefox scrollbar */
       .carousel-scrollbar {
         scrollbar-width: thin;
-        scrollbar-color: #cbd5e1 #f1f5f9;
+        scrollbar-color: #d4d4d8 #f4f4f5;
       }
       .dark .carousel-scrollbar {
-        scrollbar-color: #475569 #1e293b;
+        scrollbar-color: #3f3f46 #18181b;
       }
-      
+
       /* Scroll snap for carousel */
       .carousel-snap {
         scroll-snap-type: x mandatory;
         scroll-behavior: smooth;
         -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
       }
-      
+
       .carousel-item {
         scroll-snap-align: start;
         scroll-snap-stop: always;
       }
-      
+
       /* Shiny card hover effect (GitHub-style) */
       .shiny-card {
         position: relative;
         overflow: hidden;
       }
-      
+
       .shiny-card-overlay {
         position: absolute;
         width: 16rem;
         height: 16rem;
         border-radius: 9999px;
-        background: white;
+        background: #fbbf24;
         opacity: 0;
         pointer-events: none;
         background-blend-mode: soft-light;
@@ -103,37 +106,44 @@
         transform: translate(var(--shiny-x, 0px), var(--shiny-y, 0px));
         z-index: 0;
       }
-      
+
       .shiny-card:hover .shiny-card-overlay {
-        opacity: 0.2;
+        opacity: 0.12;
       }
-      
+
       .dark .shiny-card-overlay {
         opacity: 0;
       }
-      
+
       .dark .shiny-card:hover .shiny-card-overlay {
-        opacity: 0.15;
+        opacity: 0.08;
       }
-      
+
       .shiny-card-content {
         position: relative;
         z-index: 1;
       }
-      
-      /* Animated border trail for carousel cards */
+
+      /* Animated border trail for carousel cards.
+         The solid background-color acts as a static 1px border;
+         the conic gradient sweeps an amber highlight over it. */
       .animated-border-trail {
         position: relative;
         overflow: hidden;
-        border-radius: 1rem;
+        border-radius: 0.75rem;
         padding: 1px;
-        background: conic-gradient(from var(--angle) at 50% 50%, transparent 90%, white);
+        background-color: #e4e4e7;
+        background-image: conic-gradient(from var(--angle) at 50% 50%, transparent 80%, rgba(245, 158, 11, 0.9));
         animation: trail 10s linear infinite;
       }
-      
+
+      .dark .animated-border-trail {
+        background-color: #27272a;
+      }
+
       .animated-border-trail > * {
         position: relative;
-        border-radius: 0.9375rem; /* 15px */
+        border-radius: calc(0.75rem - 1px);
       }
     </style>
     <script>
@@ -146,21 +156,26 @@
     </script>
     {% block head_extra %}{% endblock %}
   </head>
-  <body class="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 min-h-screen transition-colors duration-200">
-    <nav class="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-slate-950 dark:to-slate-900 shadow-lg">
+  <body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 min-h-screen antialiased transition-colors duration-200">
+    <nav class="bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
-            <a href="/" class="text-white text-xl font-bold tracking-tight hover:text-blue-400 transition">
-              📈 ticker-change
+            <a href="/" class="inline-flex items-center gap-2.5 group">
+              <svg class="w-4 h-4 text-amber-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <rect x="1" y="9" width="3" height="6" rx="1"/>
+                <rect x="6.5" y="5" width="3" height="10" rx="1"/>
+                <rect x="12" y="1" width="3" height="14" rx="1"/>
+              </svg>
+              <span class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">ticker<span class="text-amber-500">/</span>change</span>
             </a>
           </div>
           <div class="flex items-center">
-            <button id="theme-toggle" class="p-2 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors duration-200">
-              <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5 text-yellow-300" fill="currentColor" viewBox="0 0 20 20">
+            <button id="theme-toggle" class="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors duration-200">
+              <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
               </svg>
-              <svg id="theme-toggle-light-icon" class="hidden w-5 h-5 text-slate-300" fill="currentColor" viewBox="0 0 20 20">
+              <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path>
               </svg>
             </button>
@@ -173,9 +188,9 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="text-center text-slate-500 dark:text-slate-400 pb-8 mt-12 space-y-1">
-      <p class="text-sm">Powered by yfinance • Real-time market data</p>
-      <p class="text-sm">Built with Cursor</p>
+    <footer class="text-center text-zinc-400 dark:text-zinc-600 pb-8 mt-12 space-y-1">
+      <p class="text-xs uppercase tracking-wider">Powered by yfinance &middot; Real-time market data</p>
+      <p class="text-xs uppercase tracking-wider">Built with Cursor</p>
     </footer>
 
     <script>

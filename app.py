@@ -275,14 +275,14 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                     low=df['Low'],
                     close=df['Close'],
                     name='Price',
-                    increasing_line_color='#26a69a',
-                    decreasing_line_color='#ef5350'
+                    increasing_line_color='#10b981',
+                    decreasing_line_color='#f43f5e'
                 ),
                 row=1, col=1
             )
             
             # Add volume bars as color-coded histogram (green for up, red for down)
-            colors = ['#26a69a' if row['Close'] >= row['Open'] else '#ef5350' 
+            colors = ['#10b981' if row['Close'] >= row['Open'] else '#f43f5e'
                       for idx, row in df.iterrows()]
             
             fig.add_trace(
@@ -302,7 +302,9 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                 template='plotly_white',
                 height=600,
                 hovermode='x unified',
-                font=dict(size=12),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(size=12, family='Inter, sans-serif'),
                 autosize=True,
                 margin=dict(l=60, r=60, t=60, b=80),
                 showlegend=False,
@@ -332,8 +334,8 @@ def generate_stock_chart(ticker, period="5y", retries=2):
                         dict(count=5, label="5Y", step="year", stepmode="backward"),
                         dict(label="All", step="all")
                     ]),
-                    bgcolor='#f1f5f9',
-                    activecolor='#3b82f6',
+                    bgcolor='#f4f4f5',
+                    activecolor='#f59e0b',
                     x=0,
                     y=1.0,
                     xanchor='left',

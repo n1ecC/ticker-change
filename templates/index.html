@@ -1,56 +1,56 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-4 sm:p-8 lg:p-12 max-w-2xl mx-auto transition-colors duration-200">
-    <div class="text-center mb-6 sm:mb-8">
-        <div class="text-4xl sm:text-5xl lg:text-6xl mb-3 sm:mb-4">📈</div>
-        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white mb-2">Stock Tracker</h1>
-        <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300">Analyze historical stock performance with ease</p>
+<div class="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-6 sm:p-10 lg:p-12 max-w-2xl mx-auto transition-colors duration-200">
+    <div class="text-center mb-8 sm:mb-10">
+        <p class="text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-3">Market Analysis</p>
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mb-3">Track any ticker.</h1>
+        <p class="text-sm sm:text-base text-zinc-500 dark:text-zinc-400">Historical performance, net change, and custom lookbacks in one view.</p>
     </div>
-    
-    <form action="/stock" method="GET" class="mb-6 sm:mb-8">
+
+    <form action="/stock" method="GET" class="mb-8 sm:mb-10">
         <div class="flex flex-col sm:flex-row gap-3">
-            <input type="text" 
-                   name="ticker" 
-                   placeholder="Enter stock ticker (e.g., AAPL)" 
+            <input type="text"
+                   name="ticker"
+                   placeholder="Ticker symbol — e.g. AAPL"
                    required
-                   class="flex-1 px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
-            <button type="submit" 
-                    class="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-base sm:text-lg font-semibold rounded-xl hover:from-blue-700 hover:to-blue-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                   class="flex-1 px-4 sm:px-5 py-3 sm:py-3.5 text-base sm:text-lg font-mono uppercase placeholder:normal-case placeholder:font-sans bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition">
+            <button type="submit"
+                    class="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 text-base sm:text-lg font-semibold rounded-lg transition">
                 Analyze
             </button>
         </div>
     </form>
 
-    <div class="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4 sm:p-6 border border-blue-100 dark:border-blue-800">
-        <h3 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-3">✨ Features:</h3>
-        <ul class="space-y-2 text-sm sm:text-base text-slate-700 dark:text-slate-300">
-            <li class="flex items-start gap-2">
-                <span class="text-blue-600 mt-0.5">•</span>
-                <span>View percentage and dollar changes across multiple time periods</span>
+    <div class="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 p-4 sm:p-6">
+        <h3 class="text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-4">Capabilities</h3>
+        <ul class="space-y-2.5 text-sm sm:text-base text-zinc-700 dark:text-zinc-300">
+            <li class="flex items-start gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0"></span>
+                <span>Percentage and dollar changes across multiple time periods</span>
             </li>
-            <li class="flex items-start gap-2">
-                <span class="text-blue-600 mt-0.5">•</span>
+            <li class="flex items-start gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0"></span>
                 <span>Interactive 6-month candlestick charts with volume</span>
             </li>
-            <li class="flex items-start gap-2">
-                <span class="text-blue-600 mt-0.5">•</span>
+            <li class="flex items-start gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0"></span>
                 <span>Custom weekday lookback calculator</span>
             </li>
-            <li class="flex items-start gap-2">
-                <span class="text-blue-600 mt-0.5">•</span>
+            <li class="flex items-start gap-2.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 flex-shrink-0"></span>
                 <span>Real-time data from Yahoo Finance</span>
             </li>
         </ul>
-        
-        <div class="mt-4 pt-4 border-t border-blue-200 dark:border-blue-700">
-            <p class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Popular tickers:</p>
+
+        <div class="mt-5 pt-5 border-t border-zinc-200 dark:border-zinc-800">
+            <p class="text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400 mb-3">Popular tickers</p>
             <div class="flex flex-wrap gap-2">
-                <span class="px-3 py-1 bg-white dark:bg-slate-700 rounded-lg text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">AAPL</span>
-                <span class="px-3 py-1 bg-white dark:bg-slate-700 rounded-lg text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">GOOGL</span>
-                <span class="px-3 py-1 bg-white dark:bg-slate-700 rounded-lg text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">MSFT</span>
-                <span class="px-3 py-1 bg-white dark:bg-slate-700 rounded-lg text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">TSLA</span>
-                <span class="px-3 py-1 bg-white dark:bg-slate-700 rounded-lg text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">NVDA</span>
+                <a href="/stock?ticker=AAPL" class="px-3 py-1 font-mono text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded-md hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition">AAPL</a>
+                <a href="/stock?ticker=GOOGL" class="px-3 py-1 font-mono text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded-md hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition">GOOGL</a>
+                <a href="/stock?ticker=MSFT" class="px-3 py-1 font-mono text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded-md hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition">MSFT</a>
+                <a href="/stock?ticker=TSLA" class="px-3 py-1 font-mono text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded-md hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition">TSLA</a>
+                <a href="/stock?ticker=NVDA" class="px-3 py-1 font-mono text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded-md hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 transition">NVDA</a>
             </div>
         </div>
     </div>
