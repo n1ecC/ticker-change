@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import yfinance as yf
@@ -950,6 +953,108 @@ def analytics_api(ticker):
         return jsonify({"error": f"Could not retrieve data for {ticker}"}), 404
     # strip chart HTML from JSON response — charts are for the template only
     data.pop('charts', None)
+    return jsonify(data)
+
+
+def _insider_sentiment_chart(sentiment):
+    """Bar chart of monthly insider MSPR (green = net buying, red = net selling)."""
+    points = [s for s in sentiment if isinstance(s.get('mspr'), (int, float))]
+    if not points:
+        return None
+    points = points[-18:]
+    labels = [f"{s['year']}-{str(s['month']).zfill(2)}" for s in points]
+    values = [s['mspr'] for s in points]
+    colors = ['#10b981' if v >= 0 else '#ef4444' for v in values]
+    fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colors))
+    fig.update_layout(
+        title='Insider Sentiment (MSPR by month)',
+        yaxis_title='MSPR',
+        template='plotly_white',
+        height=300,
+        margin=dict(l=50, r=30, t=50, b=50),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+    )
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def _institutional_holders_chart(holders):
+    """Horizontal bar of top institutional holders by shares held."""
+    if not holders:
+        return None
+    top = holders[:10][::-1]
+    fig = go.Figure(go.Bar(
+        x=[h['shares'] for h in top],
+        y=[h['holder'] for h in top],
+        orientation='h',
+        marker_color='#6366f1',
+    ))
+    fig.update_layout(
+        title='Top Institutional Holders (shares)',
+        template='plotly_white',
+        height=380,
+        margin=dict(l=10, r=30, t=50, b=40),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        yaxis=dict(automargin=True),
+    )
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def compute_positioning(ticker: str) -> dict:
+    """Assemble market-positioning data from all available free providers.
+
+    Always returns a dict (never None) so the page renders even when every
+    provider is unconfigured — each panel reports its own availability.
+    """
+    symbol = ticker.upper()
+    cfg = providers.configured()
+
+    valuation = providers.finnhub_metrics(symbol)
+    recommendations = providers.finnhub_recommendations(symbol)
+
+    sentiment = providers.finnhub_insider_sentiment(symbol)
+    transactions = providers.finnhub_insider_transactions(symbol)
+    sec_filings = providers.sec_recent_filings(symbol, forms=("3", "4", "5"))
+    insider = {
+        'sentiment': sentiment,
+        'transactions': transactions,
+        'sec_filings': sec_filings,
+        'chart': _insider_sentiment_chart(sentiment) if sentiment else None,
+    }
+
+    holders = providers.fmp_institutional_holders(symbol)
+    sec_13f = providers.sec_recent_filings(symbol, forms=("13F-HR", "13F-HR/A"))
+    institutional = {
+        'holders': holders,
+        'sec_filings': sec_13f,
+        'chart': _institutional_holders_chart(holders) if holders else None,
+    }
+
+    return {
+        'ticker': symbol,
+        'configured': cfg,
+        'valuation': valuation,
+        'recommendations': recommendations,
+        'insider': insider,
+        'institutional': institutional,
+    }
+
+
+@app.route('/positioning')
+def positioning_page():
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return render_template('positioning.html', data=None, ticker='')
+    data = compute_positioning(ticker)
+    return render_template('positioning.html', data=data, ticker=ticker)
+
+
+@app.route('/api/positioning/<ticker>')
+def positioning_api(ticker):
+    data = compute_positioning(ticker)
+    data['insider'].pop('chart', None)
+    data['institutional'].pop('chart', None)
     return jsonify(data)
 
 
