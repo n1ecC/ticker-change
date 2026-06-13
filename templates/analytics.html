@@ -204,25 +204,49 @@
     </div>
     {% endif %}
 
+    {% if data.charts.monte_carlo %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Monte Carlo Forward Projection</h2>
+      <p class="text-xs text-zinc-400 mb-3">
+        1,000 simulated price paths over the next year (geometric Brownian motion calibrated to this stock's drift &amp; volatility). Bands show the 5–95% and 25–75% outcome ranges.
+        {% if data.stats.mc_median is not none %}
+        <br>
+        <span class="text-amber-500 font-mono">Median ${{ data.stats.mc_median }}</span> &middot;
+        <span class="font-mono">90% range ${{ data.stats.mc_p5 }}–${{ data.stats.mc_p95 }}</span> &middot;
+        <span class="font-mono {% if data.stats.mc_prob_gain >= 50 %}text-emerald-400{% else %}text-rose-400{% endif %}">P(gain) {{ data.stats.mc_prob_gain }}%</span> &middot;
+        <span class="text-emerald-400 font-mono">P(&gt;+20%) {{ data.stats.mc_prob_up20 }}%</span> &middot;
+        <span class="text-rose-400 font-mono">P(&lt;−20%) {{ data.stats.mc_prob_dn20 }}%</span>
+        {% endif %}
+      </p>
+      {{ data.charts.monte_carlo | safe }}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Row 5b: Analyst price target / options smile (when available) -->
+  {% if data.charts.price_target or data.charts.options_smile %}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     {% if data.charts.price_target %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
       <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Analyst Price Target</h2>
       <p class="text-xs text-zinc-400 mb-3">
         Wall Street consensus — low, mean, and high 12-month price targets from covering analysts.
         <span class="text-amber-500 font-mono">◆</span> mean target &nbsp;
-        <span class="font-mono {% if data.current_price < (data.charts.price_target | string | float(0)) %}text-emerald-400{% else %}text-rose-400{% endif %}">●</span> current price.
+        <span class="font-mono">●</span> current price.
       </p>
       {{ data.charts.price_target | safe }}
     </div>
-    {% elif data.charts.options_smile %}
+    {% endif %}
+    {% if data.charts.options_smile %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
       <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Options IV Smile / Skew</h2>
       <p class="text-xs text-zinc-400 mb-3">Implied volatility across strike moneyness for the nearest expirations. A steep left skew means the market prices downside risk (puts) more expensively than upside.</p>
       {{ data.charts.options_smile | safe }}
     </div>
     {% endif %}
-
   </div>
+  {% endif %}
 
   <!-- Row 6: Sharpe + Seasonality -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
