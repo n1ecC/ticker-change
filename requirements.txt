@@ -6,3 +6,4 @@ numpy
 gunicorn
 flask-cors
 plotly
+requests
