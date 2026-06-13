@@ -38,10 +38,16 @@
   {% if data.fundamentals and data.fundamentals.get('Name') %}
   <span class="text-sm text-zinc-400 dark:text-zinc-500">{{ data.fundamentals['Name'] }}</span>
   {% endif %}
-  <a href="/stock?ticker={{ data.ticker }}"
-     class="ml-auto text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
-    ← Price table
-  </a>
+  <div class="ml-auto flex gap-2">
+    <a href="/stock?ticker={{ data.ticker }}"
+       class="text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+      ← Price table
+    </a>
+    <a href="/positioning?ticker={{ data.ticker }}"
+       class="text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+      Positioning →
+    </a>
+  </div>
 </div>
 
 <!-- Risk stat cards -->
