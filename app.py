@@ -627,6 +627,189 @@ def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
         return None
 
 
+def get_cumulative_return_chart(ticker: str, df: pd.DataFrame) -> str | None:
+    """Normalised cumulative return: ticker vs. SPY vs. QQQ from the stock's earliest date."""
+    try:
+        spy_df = get_or_fetch_prices('SPY')
+        qqq_df = get_or_fetch_prices('QQQ')
+
+        series = {'ticker': df['close'].copy()}
+        if spy_df is not None and not spy_df.empty:
+            series['SPY'] = spy_df['close'].copy()
+        if qqq_df is not None and not qqq_df.empty:
+            series['QQQ'] = qqq_df['close'].copy()
+
+        # Align on common dates, start from the earliest date present in all series
+        combined = pd.DataFrame(series).dropna()
+        if len(combined) < 2:
+            return None
+
+        # Normalise to 100 at day-0
+        normalised = (combined / combined.iloc[0]) * 100
+
+        palette = {
+            'ticker': '#f59e0b',
+            'SPY':    '#a1a1aa',
+            'QQQ':    '#6366f1',
+        }
+        names = {
+            'ticker': ticker.upper(),
+            'SPY':    'SPY',
+            'QQQ':    'QQQ',
+        }
+
+        fig = go.Figure()
+        for key in ['SPY', 'QQQ', 'ticker']:
+            if key not in normalised.columns:
+                continue
+            final_val = round(float(normalised[key].iloc[-1]), 1)
+            fig.add_trace(go.Scatter(
+                x=normalised.index,
+                y=normalised[key],
+                mode='lines',
+                name=f"{names[key]}  {final_val}",
+                line=dict(
+                    color=palette[key],
+                    width=2.5 if key == 'ticker' else 1.5,
+                ),
+            ))
+
+        fig.add_hline(y=100, line_dash='dot', line_color='#52525b', line_width=1)
+        fig.update_layout(
+            yaxis_title='Growth of $100',
+            template='plotly_white',
+            height=350,
+            margin=dict(l=50, r=30, t=30, b=50),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02),
+            hovermode='x unified',
+        )
+        return fig.to_html(full_html=False, include_plotlyjs=False)
+    except Exception as e:
+        print(f"Cumulative return chart failed for {ticker}: {e}")
+        return None
+
+
+def get_price_target_chart(ticker: str, current_price: float) -> str | None:
+    """Analyst consensus price target gauge via Finnhub."""
+    try:
+        pt = providers.finnhub_price_target(ticker)
+        if not pt:
+            return None
+
+        t_low  = pt.get('low')
+        t_mean = pt.get('mean')
+        t_med  = pt.get('median')
+        t_high = pt.get('high')
+        if not all(isinstance(v, (int, float)) for v in [t_low, t_mean, t_high]):
+            return None
+
+        upside_pct = ((t_mean - current_price) / current_price) * 100
+        is_upside  = upside_pct >= 0
+        upside_color = '#10b981' if is_upside else '#f43f5e'
+
+        fig = go.Figure()
+
+        # Range band: low → high
+        fig.add_shape(type='rect',
+            x0=t_low, x1=t_high, y0=0.35, y1=0.65,
+            fillcolor='rgba(99,102,241,0.12)',
+            line=dict(width=0),
+        )
+        # Low → high bar spine
+        fig.add_trace(go.Scatter(
+            x=[t_low, t_high], y=[0.5, 0.5],
+            mode='lines',
+            line=dict(color='#6366f1', width=3),
+            name=f'Target range  ${t_low:.0f} – ${t_high:.0f}',
+            showlegend=True,
+        ))
+        # Mean target diamond
+        fig.add_trace(go.Scatter(
+            x=[t_mean], y=[0.5],
+            mode='markers+text',
+            marker=dict(color='#f59e0b', size=16, symbol='diamond',
+                        line=dict(color='white', width=1.5)),
+            text=[f'${t_mean:.0f}'],
+            textposition='top center',
+            textfont=dict(size=11, color='#f59e0b'),
+            name=f'Mean target  ${t_mean:.2f}',
+            showlegend=True,
+        ))
+        # Median target (smaller)
+        if t_med and t_med != t_mean:
+            fig.add_trace(go.Scatter(
+                x=[t_med], y=[0.5],
+                mode='markers',
+                marker=dict(color='#a78bfa', size=10, symbol='diamond'),
+                name=f'Median  ${t_med:.2f}',
+                showlegend=True,
+            ))
+        # Current price circle
+        fig.add_trace(go.Scatter(
+            x=[current_price], y=[0.5],
+            mode='markers+text',
+            marker=dict(color=upside_color, size=16, symbol='circle',
+                        line=dict(color='white', width=1.5)),
+            text=[f'${current_price:.0f}'],
+            textposition='bottom center',
+            textfont=dict(size=11, color=upside_color),
+            name=f'Current  ${current_price:.2f}',
+            showlegend=True,
+        ))
+
+        # Upside annotation
+        sign = '+' if is_upside else ''
+        fig.add_annotation(
+            x=(t_mean + current_price) / 2,
+            y=0.72,
+            text=f'{sign}{upside_pct:.1f}% to mean target',
+            showarrow=False,
+            font=dict(size=13, color=upside_color),
+        )
+
+        # Low / High labels
+        for x_val, label in [(t_low, f'Low\n${t_low:.0f}'), (t_high, f'High\n${t_high:.0f}')]:
+            fig.add_annotation(
+                x=x_val, y=0.28,
+                text=label.replace('\n', '<br>'),
+                showarrow=False,
+                font=dict(size=10, color='#a1a1aa'),
+                align='center',
+            )
+
+        updated = pt.get('updated', '')
+        fig.update_layout(
+            xaxis=dict(
+                range=[t_low * 0.88, t_high * 1.08],
+                showgrid=False, zeroline=False,
+                showticklabels=True,
+                tickprefix='$',
+            ),
+            yaxis=dict(range=[0, 1], visible=False),
+            template='plotly_white',
+            height=280,
+            margin=dict(l=20, r=20, t=40, b=60),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', yanchor='top', y=-0.18, x=0,
+                        font=dict(size=10)),
+            annotations=fig.layout.annotations + (
+                [dict(
+                    x=0.5, y=-0.32, xref='paper', yref='paper',
+                    text=f'Updated {updated}' if updated else '',
+                    showarrow=False,
+                    font=dict(size=9, color='#71717a'),
+                )]
+            ),
+        )
+        return fig.to_html(full_html=False, include_plotlyjs=False)
+    except Exception as e:
+        print(f"Price target chart failed for {ticker}: {e}")
+        return None
+
+
 def compute_analytics(ticker: str) -> dict | None:
     """Compute all analytics metrics from cached DB prices."""
     df = get_or_fetch_prices(ticker)
@@ -942,6 +1125,10 @@ def analytics_page():
     price_df = get_or_fetch_prices(ticker)
     if price_df is not None:
         data['charts']['insider'] = get_insider_chart(ticker, price_df)
+        data['charts']['cumulative_return'] = get_cumulative_return_chart(ticker, price_df)
+
+    # Attach analyst price target
+    data['charts']['price_target'] = get_price_target_chart(ticker, data['current_price'])
 
     return render_template('analytics.html', data=data, ticker=ticker)
 

@@ -148,7 +148,22 @@
     {% endif %}
   </div>
 
-  <!-- Row 2: VaR & ES (full width) -->
+  <!-- Row 2: Cumulative Return vs Benchmarks (full width) -->
+  {% if data.charts.cumulative_return %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Cumulative Return vs. Benchmarks</h2>
+    <p class="text-xs text-zinc-400 mb-3">
+      Growth of $100 from the earliest common date.
+      <span class="text-amber-500 font-mono font-semibold">{{ data.ticker }}</span> vs.
+      <span class="text-zinc-400 font-mono">SPY</span> (S&amp;P 500) and
+      <span class="text-indigo-400 font-mono">QQQ</span> (Nasdaq 100).
+      Legend shows the final index value.
+    </p>
+    {{ data.charts.cumulative_return | safe }}
+  </div>
+  {% endif %}
+
+  <!-- Row 3: VaR & ES (full width) -->
   {% if data.charts.var %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
     <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Value-at-Risk &amp; Expected Shortfall</h2>
@@ -189,7 +204,17 @@
     </div>
     {% endif %}
 
-    {% if data.charts.options_smile %}
+    {% if data.charts.price_target %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Analyst Price Target</h2>
+      <p class="text-xs text-zinc-400 mb-3">
+        Wall Street consensus — low, mean, and high 12-month price targets from covering analysts.
+        <span class="text-amber-500 font-mono">◆</span> mean target &nbsp;
+        <span class="font-mono {% if data.current_price < (data.charts.price_target | string | float(0)) %}text-emerald-400{% else %}text-rose-400{% endif %}">●</span> current price.
+      </p>
+      {{ data.charts.price_target | safe }}
+    </div>
+    {% elif data.charts.options_smile %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
       <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Options IV Smile / Skew</h2>
       <p class="text-xs text-zinc-400 mb-3">Implied volatility across strike moneyness for the nearest expirations. A steep left skew means the market prices downside risk (puts) more expensively than upside.</p>
