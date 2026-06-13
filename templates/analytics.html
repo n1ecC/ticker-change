@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Analytics — {{ ticker }}{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Search bar -->
+<div class="mb-8">
+  <form method="get" action="/analytics" class="flex gap-3 max-w-sm">
+    <input
+      type="text"
+      name="ticker"
+      value="{{ ticker }}"
+      placeholder="Enter ticker (e.g. AAPL)"
+      class="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm font-mono uppercase"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button
+      type="submit"
+      class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm transition-colors"
+    >Analyse</button>
+  </form>
+</div>
+
+{% if error %}
+<div class="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-6 py-4 text-red-700 dark:text-red-300 text-sm">
+  {{ error }}
+</div>
+
+{% elif data %}
+<!-- Header -->
+<div class="flex flex-wrap items-baseline gap-3 mb-8">
+  <h1 class="text-3xl font-bold tracking-tight">{{ data.ticker }}</h1>
+  <span class="text-2xl font-mono font-semibold text-zinc-600 dark:text-zinc-400">${{ "%.2f"|format(data.current_price) }}</span>
+  <a href="/stock?ticker={{ data.ticker }}"
+     class="ml-auto text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+    ← Price table
+  </a>
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+  {% set stats = [
+    ('Annualised Vol', data.stats.annualised_vol ~ '%', ''),
+    ('Max Drawdown',   data.stats.max_drawdown ~ '%',  'text-red-500'),
+    ('Skewness',       data.stats.skewness,             ''),
+    ('Kurtosis',       data.stats.kurtosis,             ''),
+  ] %}
+  {% if data.stats.beta is not none %}
+  {% set stats = stats + [('Beta vs SPY', data.stats.beta, '')] %}
+  {% endif %}
+  {% set stats = stats + [
+    ('Mean Daily Ret', data.stats.mean_daily_return ~ '%', ''),
+    ('Daily Std Dev',  data.stats.daily_std ~ '%',         ''),
+    ('Data Points',    data.stats.data_points,              'text-zinc-400'),
+  ] %}
+
+  {% for label, value, extra_class in stats %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-4">
+    <p class="text-xs text-zinc-400 uppercase tracking-wider mb-1">{{ label }}</p>
+    <p class="text-xl font-mono font-semibold {{ extra_class }}">{{ value }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Charts grid -->
+<div class="space-y-8">
+
+  <!-- Row 1: Distribution + Beta side by side -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Return Distribution</h2>
+      <div class="text-xs text-zinc-400 mb-2">
+        Skew {{ data.stats.skewness }} &middot; Excess kurtosis {{ data.stats.kurtosis }}
+        &middot; Positive skew = more upside surprises; high kurtosis = fat tails
+      </div>
+      {{ data.charts.distribution | safe }}
+    </div>
+
+    {% if data.charts.beta %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Beta vs SPY</h2>
+      <div class="text-xs text-zinc-400 mb-2">
+        β {{ data.stats.beta }} — each 1% SPY move implies ~{{ data.stats.beta }}% move in {{ data.ticker }}.
+        β &gt; 1 = more volatile than market; β &lt; 1 = defensive.
+      </div>
+      {{ data.charts.beta | safe }}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Row 2: Volatility (full width) -->
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Rolling Volatility</h2>
+    <div class="text-xs text-zinc-400 mb-2">
+      30-day realised volatility annualised (×√252). Spikes indicate periods of elevated uncertainty.
+    </div>
+    {{ data.charts.volatility | safe }}
+  </div>
+
+  <!-- Row 3: Drawdown -->
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Drawdown from Peak</h2>
+    <div class="text-xs text-zinc-400 mb-2">
+      Maximum drawdown: <span class="text-red-400 font-mono">{{ data.stats.max_drawdown }}%</span>.
+      Shows how far price fell from its rolling all-time high at each point in time.
+    </div>
+    {{ data.charts.drawdown | safe }}
+  </div>
+
+  <!-- Row 4: Sharpe + Seasonality side by side -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Rolling Sharpe Ratio</h2>
+      <div class="text-xs text-zinc-400 mb-2">
+        1-year rolling Sharpe (risk-free rate ≈ 0). Above 1 is generally considered good risk-adjusted return.
+      </div>
+      {{ data.charts.sharpe | safe }}
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+      <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Seasonality</h2>
+      <div class="text-xs text-zinc-400 mb-2">
+        Average daily return by calendar month over the full history. Identifies recurring seasonal patterns.
+      </div>
+      {{ data.charts.seasonality | safe }}
+    </div>
+
+  </div>
+
+</div>
+
+{% else %}
+<!-- Empty state -->
+<div class="flex flex-col items-center justify-center py-24 text-center">
+  <svg class="w-10 h-10 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+  </svg>
+  <p class="text-zinc-400 dark:text-zinc-600 text-sm">Enter a ticker above to run analytics.</p>
+</div>
+{% endif %}
+{% endblock %}
