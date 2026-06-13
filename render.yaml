@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ticker-change
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 3 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FINNHUB_API_KEY
+        value: REDACTED_FINNHUB_KEY
+      - key: FMP_API_KEY
+        value: REDACTED_FMP_KEY
+      - key: SEC_USER_AGENT
+        value: ticker-change a.sun.079820@gmail.com
+      - key: PYTHON_VERSION
+        value: 3.11.0
