@@ -10,6 +10,8 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
 import providers
 
@@ -20,18 +22,70 @@ with app.app_context():
     init_db()
 
 
-def get_or_fetch_prices(symbol: str, period: str = "5y") -> pd.DataFrame | None:
-    """Return cached prices from DB, fetching from yfinance if stale or missing."""
-    symbol = symbol.upper()
-    if not is_fresh(symbol):
+# Process-level memo: collapses duplicate get_or_fetch_prices() calls within and
+# across nearby requests (e.g. SPY is needed by beta, cumulative-return, etc.) so
+# we don't re-query SQLite and rebuild the DataFrame several times per page load.
+_PRICE_MEMO: dict = {}
+_PRICE_MEMO_TTL = 45  # seconds
+_PRICE_MEMO_LOCK = threading.Lock()
+
+
+def _fetch_yfinance_with_retry(symbol: str, period: str, retries: int = 3):
+    """Fetch history from yfinance with exponential backoff. Returns a df or None.
+
+    yfinance frequently fails or returns empty on the first attempt (Yahoo rate
+    limiting / transient errors); retrying is what eliminates most of the
+    intermittent "data could not be retrieved" failures.
+    """
+    delay = 0.6
+    for attempt in range(retries):
         try:
-            stock = yf.Ticker(symbol)
-            df = stock.history(period=period)
+            df = yf.Ticker(symbol).history(period=period, auto_adjust=True)
             if not df.empty:
-                store_prices(symbol, df)
+                return df
+            print(f"yfinance empty for {symbol} (attempt {attempt + 1}/{retries})")
         except Exception as e:
-            print(f"yfinance fetch failed for {symbol}: {e}")
-    return get_prices(symbol)
+            print(f"yfinance fetch failed for {symbol} (attempt {attempt + 1}/{retries}): {e}")
+        if attempt < retries - 1:
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+
+def get_or_fetch_prices(symbol: str, period: str = "5y") -> pd.DataFrame | None:
+    """Return cached prices from the DB, refreshing from yfinance when stale.
+
+    Layered for speed and resilience:
+      1. In-process memo (skips redundant DB reads within a request).
+      2. SQLite cache (skips the network when data is < 1h old).
+      3. yfinance fetch with retry/backoff on a miss.
+      4. Stale-while-error: if the refresh fails but we hold older cached rows,
+         serve those rather than returning nothing.
+    """
+    symbol = symbol.upper()
+
+    now = time.time()
+    with _PRICE_MEMO_LOCK:
+        cached = _PRICE_MEMO.get(symbol)
+        if cached is not None and now - cached[0] < _PRICE_MEMO_TTL:
+            return cached[1]
+
+    if not is_fresh(symbol):
+        df = _fetch_yfinance_with_retry(symbol, period)
+        if df is not None and not df.empty:
+            store_prices(symbol, df)
+        else:
+            # Refresh failed — fall through and serve whatever we already have.
+            print(f"Serving stale/cached data for {symbol} (refresh unavailable)")
+
+    result = get_prices(symbol)
+
+    # Only memoise real data so a transient failure isn't cached as "no data".
+    if result is not None and not result.empty:
+        with _PRICE_MEMO_LOCK:
+            _PRICE_MEMO[symbol] = (now, result)
+
+    return result
 
 def calculate_date_periods():
     """Calculate the date periods for comparison"""
@@ -1197,12 +1251,33 @@ def compute_positioning(ticker: str) -> dict:
     symbol = ticker.upper()
     cfg = providers.configured()
 
-    valuation = providers.finnhub_metrics(symbol)
-    recommendations = providers.finnhub_recommendations(symbol)
+    # These provider calls are independent network requests; run them concurrently
+    # so a cold-cache positioning load is bounded by the slowest call, not their sum.
+    tasks = {
+        'valuation':       lambda: providers.finnhub_metrics(symbol),
+        'recommendations': lambda: providers.finnhub_recommendations(symbol),
+        'sentiment':       lambda: providers.finnhub_insider_sentiment(symbol),
+        'transactions':    lambda: providers.finnhub_insider_transactions(symbol),
+        'sec_filings':     lambda: providers.sec_recent_filings(symbol, forms=("3", "4", "5")),
+        'holders':         lambda: providers.fmp_institutional_holders(symbol),
+        'sec_13f':         lambda: providers.sec_recent_filings(symbol, forms=("13F-HR", "13F-HR/A")),
+    }
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        futures = {pool.submit(fn): name for name, fn in tasks.items()}
+        for future in futures:
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as e:
+                print(f"positioning task {name} failed for {symbol}: {e}")
+                results[name] = None
 
-    sentiment = providers.finnhub_insider_sentiment(symbol)
-    transactions = providers.finnhub_insider_transactions(symbol)
-    sec_filings = providers.sec_recent_filings(symbol, forms=("3", "4", "5"))
+    valuation = results['valuation']
+    recommendations = results['recommendations']
+    sentiment = results['sentiment']
+    transactions = results['transactions']
+    sec_filings = results['sec_filings']
     insider = {
         'sentiment': sentiment,
         'transactions': transactions,
@@ -1210,8 +1285,8 @@ def compute_positioning(ticker: str) -> dict:
         'chart': _insider_sentiment_chart(sentiment) if sentiment else None,
     }
 
-    holders = providers.fmp_institutional_holders(symbol)
-    sec_13f = providers.sec_recent_filings(symbol, forms=("13F-HR", "13F-HR/A"))
+    holders = results['holders']
+    sec_13f = results['sec_13f']
     institutional = {
         'holders': holders,
         'sec_filings': sec_13f,

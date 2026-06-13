@@ -12,8 +12,25 @@ Env vars:
 """
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 import db
+
+# Shared session: reuses TCP connections (faster) and retries automatically on
+# transient failures (429 rate-limits and 5xx), honouring Retry-After headers.
+_SESSION = requests.Session()
+_RETRY = Retry(
+    total=3,
+    backoff_factor=0.6,                       # 0.6s, 1.2s, 2.4s between retries
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset(["GET"]),
+    respect_retry_after_header=True,
+    raise_on_status=False,
+)
+_ADAPTER = HTTPAdapter(max_retries=_RETRY, pool_connections=10, pool_maxsize=10)
+_SESSION.mount("https://", _ADAPTER)
+_SESSION.mount("http://", _ADAPTER)
 
 FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "").strip()
 FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
@@ -42,7 +59,7 @@ def configured() -> dict:
 def _get_json(url, headers=None, params=None):
     """GET returning parsed JSON, or None on any failure."""
     try:
-        resp = requests.get(url, headers=headers, params=params, timeout=HTTP_TIMEOUT)
+        resp = _SESSION.get(url, headers=headers, params=params, timeout=HTTP_TIMEOUT)
         if resp.status_code != 200:
             print(f"[providers] {url} -> HTTP {resp.status_code}")
             return None
