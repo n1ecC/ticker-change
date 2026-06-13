@@ -171,6 +171,30 @@ def finnhub_insider_transactions(symbol: str, limit: int = 15):
     return rows or None
 
 
+def finnhub_price_target(symbol: str):
+    """Consensus analyst price target (low / mean / median / high). Returns dict or None."""
+    if not FINNHUB_KEY:
+        return None
+
+    def fetch():
+        return _get_json(
+            f"{FINNHUB_BASE}/stock/price-target",
+            headers={"X-Finnhub-Token": FINNHUB_KEY},
+            params={"symbol": symbol.upper()},
+        )
+
+    raw = _cached("finnhub", f"price-target:{symbol.upper()}", fetch)
+    if not raw or not isinstance(raw.get("targetMean"), (int, float)):
+        return None
+    return {
+        "low":    raw.get("targetLow"),
+        "mean":   raw.get("targetMean"),
+        "median": raw.get("targetMedian"),
+        "high":   raw.get("targetHigh"),
+        "updated": raw.get("lastUpdated"),
+    }
+
+
 def finnhub_recommendations(symbol: str):
     """Latest analyst recommendation breakdown. Returns dict or None."""
     if not FINNHUB_KEY:
