@@ -7,3 +7,4 @@ gunicorn
 flask-cors
 plotly
 requests
+python-dotenv
