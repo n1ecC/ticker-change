@@ -55,6 +55,40 @@
     </div>
 </div>
 
+<!-- Fundamentals mini-panel -->
+{% if data.fundamentals %}
+<div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm p-4 sm:p-5 mb-6 sm:mb-8 transition-colors duration-200">
+    <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            <h3 class="text-xs font-semibold uppercase tracking-widest text-zinc-900 dark:text-zinc-100">Fundamentals</h3>
+        </div>
+        <a href="/analytics?ticker={{ data.ticker }}" class="text-[11px] text-zinc-400 hover:text-amber-500 transition-colors">Full analytics →</a>
+    </div>
+    <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-3">
+        {% for label, key in [
+            ('Trailing P/E', 'Trailing P/E'),
+            ('Forward P/E',  'Forward P/E'),
+            ('EV/EBITDA',    'EV / EBITDA'),
+            ('P/B',          'Price / Book'),
+            ('EPS (TTM)',     'EPS (TTM)'),
+            ('Short % Float','Short % Float'),
+        ] %}
+        {% if data.fundamentals.get(key) is not none %}
+        <div>
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider">{{ label }}</p>
+            <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
+                {% set val = data.fundamentals[key] %}
+                {% if key == 'Short % Float' %}{{ "%.1f"|format(val * 100) }}%
+                {% else %}{{ "%.2f"|format(val) }}{% endif %}
+            </p>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Horizontal Carousel Layout -->
 <div class="relative mb-6 sm:mb-8">
     <!-- Scroll indicator for mobile -->

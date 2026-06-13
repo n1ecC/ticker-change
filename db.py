@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import pandas as pd
 from datetime import datetime, timedelta
 from contextlib import contextmanager
@@ -36,7 +37,43 @@ def init_db():
                 volume  INTEGER NOT NULL,
                 PRIMARY KEY (symbol, date)
             );
+
+            CREATE TABLE IF NOT EXISTS api_cache (
+                provider   TEXT     NOT NULL,
+                key        TEXT     NOT NULL,
+                fetched_at DATETIME NOT NULL,
+                payload    TEXT     NOT NULL,
+                PRIMARY KEY (provider, key)
+            );
         """)
+
+
+def cache_get(provider: str, key: str, ttl_hours: float):
+    """Return cached JSON payload if present and younger than ttl_hours, else None."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT payload, fetched_at FROM api_cache WHERE provider = ? AND key = ?",
+            (provider, key),
+        ).fetchone()
+    if row is None:
+        return None
+    fetched_at = datetime.fromisoformat(row["fetched_at"])
+    if datetime.utcnow() - fetched_at > timedelta(hours=ttl_hours):
+        return None
+    try:
+        return json.loads(row["payload"])
+    except (ValueError, TypeError):
+        return None
+
+
+def cache_set(provider: str, key: str, payload):
+    """Store a JSON-serialisable payload under (provider, key)."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO api_cache (provider, key, fetched_at, payload) "
+            "VALUES (?, ?, ?, ?)",
+            (provider, key, datetime.utcnow().isoformat(), json.dumps(payload)),
+        )
 
 
 def is_fresh(symbol: str) -> bool:

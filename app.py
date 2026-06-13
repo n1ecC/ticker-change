@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 from db import init_db, is_fresh, get_prices, store_prices
+import providers
 
 app = Flask(__name__)
 CORS(app)
@@ -470,8 +471,158 @@ def stock_page():
                 custom_result = {'error': 'Please enter a valid number'}
         
         data['custom_result'] = custom_result
+        data['fundamentals'] = get_fundamentals(ticker)
         return render_template('stock.html', data=data)
     return render_template('index.html')
+
+def get_fundamentals(ticker: str) -> dict | None:
+    """Fetch key valuation multiples and short interest from yfinance info."""
+    try:
+        info = yf.Ticker(ticker.upper()).info
+        raw = {
+            'Name':           info.get('longName') or info.get('shortName'),
+            'Sector':         info.get('sector'),
+            'Industry':       info.get('industry'),
+            'Market Cap':     info.get('marketCap'),
+            'Trailing P/E':   info.get('trailingPE'),
+            'Forward P/E':    info.get('forwardPE'),
+            'EV / EBITDA':    info.get('enterpriseToEbitda'),
+            'Price / Book':   info.get('priceToBook'),
+            'EPS (TTM)':      info.get('trailingEps'),
+            'Short % Float':  info.get('shortPercentOfFloat'),
+            'Short Ratio':    info.get('shortRatio'),
+            'Dividend Yield': info.get('dividendYield'),
+        }
+        return {k: v for k, v in raw.items() if v is not None}
+    except Exception as e:
+        print(f"Fundamentals fetch failed for {ticker}: {e}")
+        return None
+
+
+def get_options_smile(ticker: str, current_price: float) -> str | None:
+    """Build an IV smile chart from yfinance options data across 3-4 expirations."""
+    try:
+        stock = yf.Ticker(ticker.upper())
+        expirations = stock.options
+        if not expirations:
+            return None
+
+        selected = expirations[:min(4, len(expirations))]
+        palette = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e']
+
+        fig = go.Figure()
+        plotted = 0
+        for exp in selected:
+            chain = stock.option_chain(exp)
+            calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+            if calls.empty or 'impliedVolatility' not in calls.columns:
+                continue
+            calls = calls[
+                (calls['strike'] >= current_price * 0.70) &
+                (calls['strike'] <= current_price * 1.50) &
+                (calls['impliedVolatility'] > 0.01)
+            ].sort_values('strike')
+            if len(calls) < 3:
+                continue
+            fig.add_trace(go.Scatter(
+                x=calls['strike'] / current_price,
+                y=calls['impliedVolatility'] * 100,
+                mode='lines+markers',
+                name=exp,
+                line=dict(color=palette[plotted % len(palette)], width=2),
+                marker=dict(size=5),
+            ))
+            plotted += 1
+
+        if plotted == 0:
+            return None
+
+        fig.add_vline(x=1.0, line_dash='dash', line_color='#a1a1aa',
+                      annotation_text='ATM', annotation_position='top right')
+        fig.update_layout(
+            xaxis_title='Moneyness  (Strike / Spot)',
+            yaxis_title='Implied Volatility (%)',
+            template='plotly_white',
+            height=350,
+            margin=dict(l=50, r=30, t=30, b=50),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02),
+        )
+        return fig.to_html(full_html=False, include_plotlyjs=False)
+    except Exception as e:
+        print(f"Options smile failed for {ticker}: {e}")
+        return None
+
+
+def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
+    """Dual-axis chart: net monthly insider share activity vs. stock price."""
+    try:
+        raw = yf.Ticker(ticker.upper()).insider_transactions
+        if raw is None or (hasattr(raw, 'empty') and raw.empty):
+            return None
+
+        idf = raw.copy()
+        # Normalise date index
+        if hasattr(idf.index, 'tz'):
+            idf.index = pd.to_datetime(idf.index).tz_localize(None)
+        else:
+            idf.index = pd.to_datetime(idf.index)
+
+        # Determine net signed shares
+        shares_col = next((c for c in idf.columns if 'share' in c.lower()), None)
+        txn_col    = next((c for c in idf.columns
+                           if c.lower() in ('transaction', 'text', 'type')), None)
+        if shares_col is None:
+            return None
+
+        idf['_shares'] = pd.to_numeric(idf[shares_col], errors='coerce').fillna(0)
+        if txn_col:
+            idf['_signed'] = idf.apply(
+                lambda r: r['_shares'] if 'purchase' in str(r[txn_col]).lower()
+                          else -r['_shares'],
+                axis=1
+            )
+        else:
+            idf['_signed'] = idf['_shares']
+
+        monthly = idf['_signed'].resample('ME').sum()
+        monthly = monthly[monthly != 0]
+        if monthly.empty:
+            return None
+
+        bar_colors = ['#10b981' if v > 0 else '#f43f5e' for v in monthly.values]
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=monthly.index, y=monthly.values,
+            name='Net Insider Shares',
+            marker_color=bar_colors,
+            marker_line_width=0,
+            yaxis='y',
+        ))
+        fig.add_trace(go.Scatter(
+            x=price_df.index, y=price_df['close'],
+            mode='lines', name='Price',
+            line=dict(color='#f59e0b', width=1.5),
+            yaxis='y2',
+        ))
+        fig.update_layout(
+            yaxis =dict(title='Net Shares (Insider)', side='left'),
+            yaxis2=dict(title='Price ($)', side='right',
+                        overlaying='y', showgrid=False),
+            template='plotly_white',
+            height=350,
+            margin=dict(l=60, r=60, t=30, b=50),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02),
+        )
+        return fig.to_html(full_html=False, include_plotlyjs=False)
+    except Exception as e:
+        print(f"Insider chart failed for {ticker}: {e}")
+        return None
+
 
 def compute_analytics(ticker: str) -> dict | None:
     """Compute all analytics metrics from cached DB prices."""
@@ -644,6 +795,101 @@ def compute_analytics(ticker: str) -> dict | None:
             )
             beta_chart = beta_fig.to_html(full_html=False, include_plotlyjs=False)
 
+    # --- Rolling VaR (95 % & 99 %) + Expected Shortfall ---
+    roll_win = 252
+    df['var_95'] = df['returns'].rolling(roll_win).quantile(0.05) * 100
+    df['var_99'] = df['returns'].rolling(roll_win).quantile(0.01) * 100
+
+    def _rolling_es(series, window, q):
+        def _es(arr):
+            t = np.percentile(arr, q * 100)
+            tail = arr[arr <= t]
+            return tail.mean() if len(tail) > 0 else np.nan
+        return series.rolling(window).apply(_es, raw=True)
+
+    df['es_95'] = _rolling_es(df['returns'], roll_win, 0.05) * 100
+
+    var_fig = go.Figure()
+    var_fig.add_trace(go.Scatter(
+        x=df.index, y=df['var_95'].abs(),
+        mode='lines', name='VaR 95 %',
+        line=dict(color='#f59e0b', width=1.5),
+        fill='tozeroy', fillcolor='rgba(245,158,11,0.08)',
+    ))
+    var_fig.add_trace(go.Scatter(
+        x=df.index, y=df['var_99'].abs(),
+        mode='lines', name='VaR 99 %',
+        line=dict(color='#f43f5e', width=1.5),
+        fill='tozeroy', fillcolor='rgba(244,63,94,0.08)',
+    ))
+    var_fig.add_trace(go.Scatter(
+        x=df.index, y=df['es_95'].abs(),
+        mode='lines', name='ES 95 %',
+        line=dict(color='#6366f1', width=1.5, dash='dash'),
+    ))
+    var_fig.update_layout(
+        title='Rolling 1-Year Daily VaR & Expected Shortfall',
+        yaxis_title='Potential Daily Loss (%)',
+        template='plotly_white',
+        height=320,
+        margin=dict(l=50, r=30, t=50, b=50),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02),
+    )
+    var_chart = var_fig.to_html(full_html=False, include_plotlyjs=False)
+
+    # Current VaR figures (latest rolling window)
+    latest_var_95 = round(float(df['var_95'].dropna().iloc[-1]), 3) if not df['var_95'].dropna().empty else None
+    latest_var_99 = round(float(df['var_99'].dropna().iloc[-1]), 3) if not df['var_99'].dropna().empty else None
+
+    # --- Volume Profile (last 2 years) ---
+    vp_cutoff = df.index[-1] - pd.DateOffset(years=2)
+    vp_df = df[df.index >= vp_cutoff].copy()
+    vp_chart = None
+    if len(vp_df) > 30:
+        price_min, price_max = vp_df['low'].min(), vp_df['high'].max()
+        n_bins = 50
+        bins = np.linspace(price_min, price_max, n_bins + 1)
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        vp_df['_bin'] = pd.cut(vp_df['close'], bins=bins, labels=False)
+        vol_by_price = vp_df.groupby('_bin')['volume'].sum().reindex(range(n_bins), fill_value=0)
+        vp_colors = [
+            '#f59e0b' if bc >= current_price else '#6366f1'
+            for bc in bin_centers
+        ]
+        poc_bin = int(vol_by_price.idxmax())
+        poc_price = round(float(bin_centers[poc_bin]), 2)
+
+        vp_fig = go.Figure()
+        vp_fig.add_trace(go.Bar(
+            x=vol_by_price.values,
+            y=bin_centers,
+            orientation='h',
+            marker_color=vp_colors,
+            marker_line_width=0,
+            name='Volume at Price',
+        ))
+        vp_fig.add_hline(y=current_price, line_dash='solid', line_color='#f59e0b',
+                         line_width=1.5, annotation_text='Current',
+                         annotation_position='top right')
+        vp_fig.add_hline(y=poc_price, line_dash='dash', line_color='#6366f1',
+                         line_width=1, annotation_text=f'POC ${poc_price}',
+                         annotation_position='bottom right')
+        vp_fig.update_layout(
+            yaxis_title='Price ($)',
+            xaxis_title='Cumulative Volume (2 yr)',
+            template='plotly_white',
+            height=420,
+            margin=dict(l=60, r=30, t=30, b=50),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=False,
+        )
+        vp_chart = vp_fig.to_html(full_html=False, include_plotlyjs=False)
+    else:
+        poc_price = None
+
     return {
         'ticker': ticker.upper(),
         'current_price': current_price,
@@ -656,6 +902,9 @@ def compute_analytics(ticker: str) -> dict | None:
             'max_drawdown': round(max_drawdown, 2),
             'beta': beta,
             'data_points': len(df),
+            'var_95': latest_var_95,
+            'var_99': latest_var_99,
+            'poc_price': poc_price,
         },
         'charts': {
             'distribution': dist_chart,
@@ -664,6 +913,8 @@ def compute_analytics(ticker: str) -> dict | None:
             'sharpe': sharpe_chart,
             'seasonality': season_chart,
             'beta': beta_chart,
+            'var': var_chart,
+            'volume_profile': vp_chart,
         }
     }
 
@@ -677,6 +928,18 @@ def analytics_page():
     if data is None:
         return render_template('analytics.html', data=None, ticker=ticker,
                                error=f"Could not retrieve data for {ticker}")
+
+    # Attach fundamentals
+    data['fundamentals'] = get_fundamentals(ticker)
+
+    # Attach options smile
+    data['charts']['options_smile'] = get_options_smile(ticker, data['current_price'])
+
+    # Attach insider chart (needs price df)
+    price_df = get_or_fetch_prices(ticker)
+    if price_df is not None:
+        data['charts']['insider'] = get_insider_chart(ticker, price_df)
+
     return render_template('analytics.html', data=data, ticker=ticker)
 
 
