@@ -169,8 +169,8 @@
               </svg>
               <span class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">ticker<span class="text-amber-500">/</span>change</span>
             </a>
-            <a href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
-            <a href="/positioning" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Positioning</a>
+            <a id="nav-analytics" href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
+            <a id="nav-positioning" href="/positioning" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Positioning</a>
           </div>
           <div class="flex items-center">
             <button id="theme-toggle" class="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors duration-200">
@@ -222,6 +222,28 @@
           localStorage.setItem('theme', 'dark');
         }
       });
+    </script>
+    <script>
+      // Persist the active ticker across Analytics / Positioning / Stock nav links.
+      // Priority: URL param "ticker" > localStorage "last_ticker"
+      (function () {
+        const params = new URLSearchParams(window.location.search);
+        const urlTicker = params.get('ticker');
+        if (urlTicker) {
+          localStorage.setItem('last_ticker', urlTicker.toUpperCase());
+        }
+        const ticker = urlTicker || localStorage.getItem('last_ticker');
+        if (!ticker) return;
+
+        const links = {
+          'nav-analytics':   '/analytics?ticker=' + ticker,
+          'nav-positioning': '/positioning?ticker=' + ticker,
+        };
+        Object.entries(links).forEach(([id, href]) => {
+          const el = document.getElementById(id);
+          if (el) el.href = href;
+        });
+      })();
     </script>
     {% block scripts %}{% endblock %}
   </body>
