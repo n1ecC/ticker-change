@@ -50,3 +50,29 @@ gunicorn app:app --bind 0.0.0.0:5001 --workers 2
 
 - The app uses `yfinance` to fetch historical prices — consider adding caching to avoid rate-limits.
 - Do not commit secrets; store them as environment variables on your host.
+
+## Market positioning data (free-tier APIs)
+
+The `/positioning` page layers institutional, insider, and valuation data on top of
+the price analytics. It is powered entirely by free-tier providers, cached in SQLite
+(24h TTL) to stay within rate limits. Each panel degrades gracefully — the page
+renders with whatever credentials are present.
+
+| Env var | Provider | Free tier | Powers |
+| --- | --- | --- | --- |
+| _(none)_ | [SEC EDGAR](https://www.sec.gov/edgar) | Unlimited | Form 3/4/5 insider filings, 13F filings — **works out of the box** |
+| `FINNHUB_API_KEY` | [Finnhub](https://finnhub.io) | 60 req/min | Valuation metrics, insider sentiment (MSPR), insider transactions, analyst recommendations |
+| `FMP_API_KEY` | [Financial Modeling Prep](https://financialmodelingprep.com) | 250 req/day | Top institutional (13F) holders |
+| `SEC_USER_AGENT` | — | — | Contact string SEC requires, e.g. `"Your Name you@email.com"` |
+
+Set them before running, for example:
+
+```bash
+export FINNHUB_API_KEY="your_key"
+export FMP_API_KEY="your_key"
+export SEC_USER_AGENT="Your Name you@email.com"
+python3 app.py
+```
+
+Without any keys, the SEC EDGAR panels still populate; the Finnhub/FMP panels show a
+prompt explaining which key to set.
