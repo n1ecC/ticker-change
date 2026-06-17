@@ -1130,36 +1130,51 @@ def compute_analytics(ticker: str) -> dict | None:
     else:
         poc_price = None
 
-    # --- Monte Carlo forward simulation (geometric Brownian motion) ---
-    # Projects price 1 trading year forward by simulating many GBM paths
-    # calibrated to the stock's own historical drift and volatility, then
-    # summarising them as percentile bands. The only forward-looking panel.
+    # --- Forward estimates (Monte Carlo at multiple horizons) ---
+    # Projects prices at 3-month, 6-month, and 1-year horizons using GBM
+    # calibrated to the stock's own historical drift and volatility.
+    def _mc_forward_estimate(current, mu, sigma, horizon_days, n_sims=1000, seed=42):
+        """Compute forward price estimate at horizon_days using Monte Carlo GBM.
+        Returns: (median, p5, p25, p75, p95, prob_gain, prob_up20, prob_dn20)"""
+        rng = np.random.default_rng(seed)
+        shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon_days))
+        paths = current * np.exp(np.cumsum(shocks, axis=1))
+        terminal = paths[:, -1]
+        return {
+            'median': round(float(np.median(terminal)), 2),
+            'p5': round(float(np.percentile(terminal, 5)), 2),
+            'p25': round(float(np.percentile(terminal, 25)), 2),
+            'p75': round(float(np.percentile(terminal, 75)), 2),
+            'p95': round(float(np.percentile(terminal, 95)), 2),
+            'prob_gain': round(float((terminal > current).mean() * 100), 1),
+            'prob_up20': round(float((terminal > current * 1.2).mean() * 100), 1),
+            'prob_dn20': round(float((terminal < current * 0.8).mean() * 100), 1),
+        }
+
+    forward_estimates = {}
     mc_chart = None
     mc_stats = {}
     log_ret = np.log(df['close'] / df['close'].shift(1)).dropna()
     if len(log_ret) > 30:
         mu = float(log_ret.mean())
         sigma = float(log_ret.std())
-        horizon = 252        # ~1 trading year ahead
-        n_sims = 1000
-        rng = np.random.default_rng(42)   # seeded => stable across page reloads
 
+        # Calculate estimates at multiple horizons
+        forward_estimates['3m'] = _mc_forward_estimate(current_price, mu, sigma, 63)   # ~3 months
+        forward_estimates['6m'] = _mc_forward_estimate(current_price, mu, sigma, 126)  # ~6 months
+        forward_estimates['1y'] = _mc_forward_estimate(current_price, mu, sigma, 252)  # ~1 year
+        mc_stats = forward_estimates['1y'].copy()
+
+        # Full 1-year projection chart
+        horizon = 252
+        n_sims = 1000
+        rng = np.random.default_rng(42)
         shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon))
         paths = current_price * np.exp(np.cumsum(shocks, axis=1))
-        paths = np.hstack([np.full((n_sims, 1), current_price), paths])  # anchor day-0
+        paths = np.hstack([np.full((n_sims, 1), current_price), paths])
 
         pct = np.percentile(paths, [5, 25, 50, 75, 95], axis=0)
         future_dates = pd.bdate_range(df.index[-1], periods=horizon + 1)
-
-        terminal = paths[:, -1]
-        mc_stats = {
-            'mc_median':    round(float(np.median(terminal)), 2),
-            'mc_p5':        round(float(pct[0, -1]), 2),
-            'mc_p95':       round(float(pct[4, -1]), 2),
-            'mc_prob_gain': round(float((terminal > current_price).mean() * 100), 1),
-            'mc_prob_up20': round(float((terminal > current_price * 1.2).mean() * 100), 1),
-            'mc_prob_dn20': round(float((terminal < current_price * 0.8).mean() * 100), 1),
-        }
 
         mc_fig = go.Figure()
         # 5–95% band
@@ -1177,6 +1192,13 @@ def compute_analytics(ticker: str) -> dict | None:
         # Median path
         mc_fig.add_trace(go.Scatter(x=future_dates, y=pct[2], mode='lines',
             line=dict(color='#f59e0b', width=2), name='Median'))
+        # Mark key milestones
+        date_3m = pd.bdate_range(df.index[-1], periods=64)[-1]
+        date_6m = pd.bdate_range(df.index[-1], periods=127)[-1]
+        for date, label, color in [(date_3m, '3m', '#6366f1'), (date_6m, '6m', '#8b5cf6')]:
+            if date < future_dates[-1]:
+                mc_fig.add_vline(x=date, line_dash='dash', line_color=color, line_width=1,
+                                annotation_text=label, annotation_position='top')
         # Current price reference
         mc_fig.add_hline(y=current_price, line_dash='dot', line_color='#71717a',
                          line_width=1, annotation_text='Today',
@@ -1211,13 +1233,14 @@ def compute_analytics(ticker: str) -> dict | None:
             'var_95': latest_var_95,
             'var_99': latest_var_99,
             'poc_price': poc_price,
-            'mc_median':    mc_stats.get('mc_median'),
-            'mc_p5':        mc_stats.get('mc_p5'),
-            'mc_p95':       mc_stats.get('mc_p95'),
-            'mc_prob_gain': mc_stats.get('mc_prob_gain'),
-            'mc_prob_up20': mc_stats.get('mc_prob_up20'),
-            'mc_prob_dn20': mc_stats.get('mc_prob_dn20'),
+            'mc_median':    mc_stats.get('median'),
+            'mc_p5':        mc_stats.get('p5'),
+            'mc_p95':       mc_stats.get('p95'),
+            'mc_prob_gain': mc_stats.get('prob_gain'),
+            'mc_prob_up20': mc_stats.get('prob_up20'),
+            'mc_prob_dn20': mc_stats.get('prob_dn20'),
         },
+        'forward_estimates': forward_estimates,
         'charts': {
             'distribution': dist_chart,
             'volatility': vol_chart,
