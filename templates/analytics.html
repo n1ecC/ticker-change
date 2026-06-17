@@ -88,24 +88,41 @@
   <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Fundamentals &amp; Valuation</h2>
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
     {% set multiples = [
-      ('Trailing P/E',  data.fundamentals.get('Trailing P/E'), 'trailing_pe'),
-      ('Forward P/E',   data.fundamentals.get('Forward P/E'), 'forward_pe'),
-      ('EV / EBITDA',   data.fundamentals.get('EV / EBITDA'), 'ev_ebitda'),
-      ('Price / Book',  data.fundamentals.get('Price / Book'), 'price_book'),
-      ('EPS (TTM)',      data.fundamentals.get('EPS (TTM)'), none),
-      ('Short % Float', data.fundamentals.get('Short % Float'), 'short_float'),
-      ('Short Ratio',   data.fundamentals.get('Short Ratio'), 'short_ratio'),
-      ('Div Yield',     data.fundamentals.get('Dividend Yield'), 'dividend_yield'),
+      ('Trailing P/E',   data.fundamentals.get('Trailing P/E'), 'trailing_pe'),
+      ('Forward P/E',    data.fundamentals.get('Forward P/E'), 'forward_pe'),
+      ('PEG Ratio',      data.fundamentals.get('PEG Ratio'), 'peg'),
+      ('EV / EBITDA',    data.fundamentals.get('EV / EBITDA'), 'ev_ebitda'),
+      ('EV / Revenue',   data.fundamentals.get('EV / Revenue'), none),
+      ('Price / Book',   data.fundamentals.get('Price / Book'), 'price_book'),
+      ('Price / Sales',  data.fundamentals.get('Price / Sales'), none),
+      ('EPS (TTM)',       data.fundamentals.get('EPS (TTM)'), none),
+      ('Forward EPS',    data.fundamentals.get('Forward EPS'), none),
+      ('Revenue Growth', data.fundamentals.get('Revenue Growth'), 'growth'),
+      ('Earnings Growth',data.fundamentals.get('Earnings Growth'), 'growth'),
+      ('Target Mean',    data.fundamentals.get('Target Mean'), 'price_target'),
+      ('Analyst Rating', data.fundamentals.get('Analyst Rating'), none),
+      ('Short % Float',  data.fundamentals.get('Short % Float'), 'short_float'),
+      ('Short Ratio',    data.fundamentals.get('Short Ratio'), 'short_ratio'),
+      ('Div Yield',      data.fundamentals.get('Dividend Yield'), 'dividend_yield'),
     ] %}
     {% for label, val, key in multiples %}
     {% if val is not none %}
     <div>
       <p class="text-[11px] text-zinc-400 uppercase tracking-wider">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</p>
-      <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
-        {% if label == 'Short % Float' or label == 'Div Yield' %}
+      <p class="text-sm font-mono font-semibold mt-0.5
+        {% if label in ['Revenue Growth', 'Earnings Growth'] %}
+          {{ 'text-emerald-500' if val >= 0 else 'text-rose-500' }}
+        {% else %}text-zinc-900 dark:text-zinc-100{% endif %}">
+        {% if label == 'Analyst Rating' %}
+          {{ val | replace('_', ' ') | title }}
+        {% elif label in ['Revenue Growth', 'Earnings Growth'] %}
+          {{ "%+.1f"|format(val * 100) }}%
+        {% elif label == 'Short % Float' %}
           {{ "%.2f"|format(val * 100) }}%
-        {% elif val == val | int %}
-          {{ "%.2f"|format(val) }}
+        {% elif label == 'Div Yield' %}
+          {{ "%.2f"|format(val) }}%
+        {% elif label == 'Target Mean' %}
+          ${{ "%.2f"|format(val) }}
         {% else %}
           {{ "%.2f"|format(val) }}
         {% endif %}
