@@ -189,7 +189,53 @@
     {{ data.charts.drawdown | safe }}
   </div>
 
-  <!-- Row 5: Volume Profile + Options Smile -->
+  <!-- Row 5: Forward Estimates Summary -->
+  {% if data.forward_estimates %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Forward Price Estimates</h2>
+    <p class="text-xs text-zinc-400 mb-4">Monte Carlo projection (1,000 paths) across multiple time horizons. Range shows 5th–95th percentile outcomes.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {% for horizon, label, color in [('3m', '3-Month', '#6366f1'), ('6m', '6-Month', '#8b5cf6'), ('1y', '1-Year', '#f59e0b')] %}
+      {% if data.forward_estimates[horizon] %}
+      {% set est = data.forward_estimates[horizon] %}
+      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4">
+        <h3 class="text-xs font-semibold mb-3" style="color: {{ color }}">{{ label }} Forward</h3>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-zinc-500 dark:text-zinc-400">Median</span>
+            <span class="font-mono font-semibold text-zinc-900 dark:text-zinc-100">${{ est.median }}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-zinc-500 dark:text-zinc-400 text-xs">90% Range</span>
+            <span class="font-mono text-xs text-zinc-600 dark:text-zinc-300">${{ est.p5 }}–${{ est.p95 }}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-zinc-500 dark:text-zinc-400 text-xs">50% Range</span>
+            <span class="font-mono text-xs text-zinc-600 dark:text-zinc-300">${{ est.p25 }}–${{ est.p75 }}</span>
+          </div>
+          <div class="pt-2 border-t border-zinc-200 dark:border-zinc-600">
+            <div class="flex justify-between items-center text-xs">
+              <span class="text-zinc-500 dark:text-zinc-400">P(Gain)</span>
+              <span class="font-mono {% if est.prob_gain >= 50 %}text-emerald-500{% else %}text-rose-500{% endif %} font-semibold">{{ est.prob_gain }}%</span>
+            </div>
+            <div class="flex justify-between items-center text-xs mt-1">
+              <span class="text-zinc-500 dark:text-zinc-400">P(&gt;+20%)</span>
+              <span class="font-mono text-emerald-500 font-semibold">{{ est.prob_up20 }}%</span>
+            </div>
+            <div class="flex justify-between items-center text-xs mt-1">
+              <span class="text-zinc-500 dark:text-zinc-400">P(&lt;−20%)</span>
+              <span class="font-mono text-rose-500 font-semibold">{{ est.prob_dn20 }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Row 5b: Volume Profile + Options Smile -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
     {% if data.charts.volume_profile %}
@@ -208,7 +254,7 @@
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
       <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Monte Carlo Forward Projection</h2>
       <p class="text-xs text-zinc-400 mb-3">
-        1,000 simulated price paths over the next year (geometric Brownian motion calibrated to this stock's drift &amp; volatility). Bands show the 5–95% and 25–75% outcome ranges.
+        1,000 simulated price paths over the next year (geometric Brownian motion calibrated to this stock's drift &amp; volatility). Bands show the 5–95% and 25–75% outcome ranges. Vertical lines mark 3-month &amp; 6-month milestones.
         {% if data.stats.mc_median is not none %}
         <br>
         <span class="text-amber-500 font-mono">Median ${{ data.stats.mc_median }}</span> &middot;
