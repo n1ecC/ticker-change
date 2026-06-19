@@ -128,6 +128,81 @@
 </div>
 {% endif %}
 
+<!-- Forecasts & Guidance panel -->
+{% if data.fundamentals and (data.fundamentals.get('Next Earnings') or data.fundamentals.get('PEG Ratio') or data.fundamentals.get('Earnings Growth') or data.fundamentals.get('Revenue Growth')) %}
+<div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 mb-8">
+  <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Consensus Forecasts &amp; Guidance</h2>
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3">
+    
+    {% if data.fundamentals.get('Next Earnings') %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">Next Earnings Date</p>
+      <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
+        {{ data.fundamentals['Next Earnings'] }}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if data.fundamentals.get('Consensus EPS') is not none %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">Consensus EPS Est.</p>
+      <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
+        ${{ "%.2f"|format(data.fundamentals['Consensus EPS']) }}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if data.fundamentals.get('Consensus Revenue') is not none %}
+    {% set rev = data.fundamentals['Consensus Revenue'] %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">Consensus Revenue Est.</p>
+      <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
+        {% if rev >= 1e12 %}
+          ${{ "%.2f"|format(rev / 1e12) }}T
+        {% elif rev >= 1e9 %}
+          ${{ "%.2f"|format(rev / 1e9) }}B
+        {% elif rev >= 1e6 %}
+          ${{ "%.2f"|format(rev / 1e6) }}M
+        {% else %}
+          ${{ "%.2f"|format(rev) }}
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if data.fundamentals.get('PEG Ratio') is not none %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">PEG Ratio</p>
+      <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
+        {{ "%.2f"|format(data.fundamentals['PEG Ratio']) }}
+      </p>
+    </div>
+    {% endif %}
+
+    {% if data.fundamentals.get('Earnings Growth') is not none %}
+    {% set eg = data.fundamentals['Earnings Growth'] %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">Projected EPS Growth</p>
+      <p class="text-sm font-mono font-semibold {% if eg >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} mt-0.5">
+        {% if eg >= 0 %}+{% endif %}{{ "%.1f"|format(eg * 100) }}%
+      </p>
+    </div>
+    {% endif %}
+
+    {% if data.fundamentals.get('Revenue Growth') is not none %}
+    {% set rg = data.fundamentals['Revenue Growth'] %}
+    <div>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">Projected Rev Growth</p>
+      <p class="text-sm font-mono font-semibold {% if rg >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} mt-0.5">
+        {% if rg >= 0 %}+{% endif %}{{ "%.1f"|format(rg * 100) }}%
+      </p>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}
+
 <!-- Charts grid -->
 <div class="space-y-8">
 
