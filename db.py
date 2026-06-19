@@ -106,6 +106,8 @@ def get_prices(symbol: str) -> pd.DataFrame | None:
 def store_prices(symbol: str, df: pd.DataFrame):
     symbol = symbol.upper()
     df = df.copy()
+    # Drop rows with any NaN in essential columns to avoid IntegrityError in SQLite
+    df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
     df.index = pd.to_datetime(df.index).tz_localize(None)
 
     rows = [
