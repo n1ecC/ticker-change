@@ -867,12 +867,14 @@ def get_price_target_chart(ticker: str, current_price: float) -> str | None:
 def compute_analytics(ticker: str) -> dict | None:
     """Compute all analytics metrics from cached DB prices."""
     df = get_or_fetch_prices(ticker)
-    if df is None or df.empty:
+    if df is None or len(df) < 2:
         return None
 
     df = df.copy()
     df['returns'] = df['close'].pct_change()
     df = df.dropna(subset=['returns'])
+    if df.empty:
+        return None
 
     current_price = float(df['close'].iloc[-1])
 
@@ -1089,44 +1091,47 @@ def compute_analytics(ticker: str) -> dict | None:
     vp_chart = None
     if len(vp_df) > 30:
         price_min, price_max = vp_df['low'].min(), vp_df['high'].max()
-        n_bins = 50
-        bins = np.linspace(price_min, price_max, n_bins + 1)
-        bin_centers = (bins[:-1] + bins[1:]) / 2
-        vp_df['_bin'] = pd.cut(vp_df['close'], bins=bins, labels=False)
-        vol_by_price = vp_df.groupby('_bin')['volume'].sum().reindex(range(n_bins), fill_value=0)
-        vp_colors = [
-            '#f59e0b' if bc >= current_price else '#6366f1'
-            for bc in bin_centers
-        ]
-        poc_bin = int(vol_by_price.idxmax())
-        poc_price = round(float(bin_centers[poc_bin]), 2)
+        if price_min == price_max:
+            poc_price = None
+        else:
+            n_bins = 50
+            bins = np.linspace(price_min, price_max, n_bins + 1)
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            vp_df['_bin'] = pd.cut(vp_df['close'], bins=bins, labels=False)
+            vol_by_price = vp_df.groupby('_bin')['volume'].sum().reindex(range(n_bins), fill_value=0)
+            vp_colors = [
+                '#f59e0b' if bc >= current_price else '#6366f1'
+                for bc in bin_centers
+            ]
+            poc_bin = int(vol_by_price.idxmax())
+            poc_price = round(float(bin_centers[poc_bin]), 2)
 
-        vp_fig = go.Figure()
-        vp_fig.add_trace(go.Bar(
-            x=vol_by_price.values,
-            y=bin_centers,
-            orientation='h',
-            marker_color=vp_colors,
-            marker_line_width=0,
-            name='Volume at Price',
-        ))
-        vp_fig.add_hline(y=current_price, line_dash='solid', line_color='#f59e0b',
-                         line_width=1.5, annotation_text='Current',
-                         annotation_position='top right')
-        vp_fig.add_hline(y=poc_price, line_dash='dash', line_color='#6366f1',
-                         line_width=1, annotation_text=f'POC ${poc_price}',
-                         annotation_position='bottom right')
-        vp_fig.update_layout(
-            yaxis_title='Price ($)',
-            xaxis_title='Cumulative Volume (2 yr)',
-            template='plotly_white',
-            height=420,
-            margin=dict(l=60, r=30, t=30, b=50),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            showlegend=False,
-        )
-        vp_chart = vp_fig.to_html(full_html=False, include_plotlyjs=False)
+            vp_fig = go.Figure()
+            vp_fig.add_trace(go.Bar(
+                x=vol_by_price.values,
+                y=bin_centers,
+                orientation='h',
+                marker_color=vp_colors,
+                marker_line_width=0,
+                name='Volume at Price',
+            ))
+            vp_fig.add_hline(y=current_price, line_dash='solid', line_color='#f59e0b',
+                             line_width=1.5, annotation_text='Current',
+                             annotation_position='top right')
+            vp_fig.add_hline(y=poc_price, line_dash='dash', line_color='#6366f1',
+                             line_width=1, annotation_text=f'POC ${poc_price}',
+                             annotation_position='bottom right')
+            vp_fig.update_layout(
+                yaxis_title='Price ($)',
+                xaxis_title='Cumulative Volume (2 yr)',
+                template='plotly_white',
+                height=420,
+                margin=dict(l=60, r=30, t=30, b=50),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                showlegend=False,
+            )
+            vp_chart = vp_fig.to_html(full_html=False, include_plotlyjs=False)
     else:
         poc_price = None
 
