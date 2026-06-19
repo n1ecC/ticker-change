@@ -533,9 +533,29 @@ def stock_page():
     return render_template('index.html')
 
 def get_fundamentals(ticker: str) -> dict | None:
-    """Fetch key valuation multiples and short interest from yfinance info."""
+    """Fetch key valuation multiples, short interest, consensus forecasts, and upcoming events from yfinance."""
     try:
-        info = yf.Ticker(ticker.upper()).info
+        t = yf.Ticker(ticker.upper())
+        info = t.info or {}
+        
+        # Extract upcoming earnings dates and consensus forecasts if available
+        cal = None
+        try:
+            cal = t.calendar
+        except Exception:
+            pass  # Some tickers (e.g., indices) might fail to return calendar data
+            
+        next_earnings = None
+        consensus_eps = None
+        consensus_rev = None
+        
+        if cal and isinstance(cal, dict):
+            dates = cal.get('Earnings Date')
+            if dates and len(dates) > 0:
+                next_earnings = dates[0].strftime('%Y-%m-%d')
+            consensus_eps = cal.get('Earnings Average')
+            consensus_rev = cal.get('Revenue Average')
+
         raw = {
             'Name':           info.get('longName') or info.get('shortName'),
             'Sector':         info.get('sector'),
@@ -549,6 +569,14 @@ def get_fundamentals(ticker: str) -> dict | None:
             'Short % Float':  info.get('shortPercentOfFloat'),
             'Short Ratio':    info.get('shortRatio'),
             'Dividend Yield': info.get('dividendYield'),
+            
+            # --- Forward Estimates & Guidance ---
+            'PEG Ratio':       info.get('pegRatio'),
+            'Earnings Growth': info.get('earningsGrowth'),
+            'Revenue Growth':  info.get('revenueGrowth'),
+            'Next Earnings':   next_earnings,
+            'Consensus EPS':   consensus_eps,
+            'Consensus Revenue': consensus_rev,
         }
         return {k: v for k, v in raw.items() if v is not None}
     except Exception as e:
