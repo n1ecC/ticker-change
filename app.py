@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -11,6 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 import threading
+import math
 from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
 import providers
@@ -637,6 +639,234 @@ def get_options_smile(ticker: str, current_price: float) -> str | None:
         return fig.to_html(full_html=False, include_plotlyjs=False)
     except Exception as e:
         print(f"Options smile failed for {ticker}: {e}")
+        return None
+
+
+def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -> dict | None:
+    """Build a dealer Gamma Exposure (GEX) profile from yfinance option chains.
+
+    Per strike:  GEX = Γ × OpenInterest × 100 × Spot² × 0.01, signed by the
+    standard dealer-positioning convention (long calls → +, short puts → −).
+    yfinance does not return Γ, so it is computed with the in-house Black-Scholes
+    engine (`calculate_greeks`) from the strike, spot, time-to-expiry and the
+    chain's implied volatility. Aggregated across the nearest expirations this
+    yields the structural levels traders watch: the gamma-flip strike, the call
+    wall (resistance) and the put wall (support). Values are in $M per 1% move.
+
+    This is a naive end-of-day model (delayed yfinance OI, uniform dealer
+    assumptions) — directional, not an institutional low-latency feed.
+    """
+    try:
+        stock = yf.Ticker(ticker.upper())
+        expirations = stock.options
+        if not expirations or not current_price:
+            return None
+
+        today = datetime.now()
+        # Near-term expirations dominate dealer gamma; cap the chain count so the
+        # page stays responsive (each option_chain call is a separate request).
+        selected = []
+        for exp in expirations:
+            try:
+                exp_dt = datetime.strptime(exp, '%Y-%m-%d')
+            except ValueError:
+                continue
+            dte = (exp_dt - today).days
+            if dte < 0:
+                continue
+            selected.append((exp, exp_dt, dte))
+            if len(selected) >= 6:
+                break
+        if not selected:
+            return None
+
+        # Independent network calls — fetch the chains concurrently.
+        def _fetch(exp_tuple):
+            try:
+                return exp_tuple, stock.option_chain(exp_tuple[0])
+            except Exception:
+                return exp_tuple, None
+
+        with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+            fetched = list(pool.map(_fetch, selected))
+
+        lo, hi = current_price * 0.80, current_price * 1.20
+        agg: dict = {}  # strike -> {'call': gex, 'put': gex}
+
+        for (exp, exp_dt, dte), chain in fetched:
+            if chain is None:
+                continue
+            t_years = max(1e-5, (dte + 1) / 365.0)
+            for df_side, side in ((getattr(chain, 'calls', None), 'call'),
+                                  (getattr(chain, 'puts', None), 'put')):
+                if df_side is None or df_side.empty:
+                    continue
+                for _, row in df_side.iterrows():
+                    k = float(row.get('strike', 0) or 0)
+                    if not (lo <= k <= hi):
+                        continue
+                    oi = row.get('openInterest', 0)
+                    iv = row.get('impliedVolatility', 0)
+                    if oi is None or iv is None or np.isnan(oi) or np.isnan(iv):
+                        continue
+                    oi, iv = float(oi), float(iv)
+                    if oi <= 0 or iv <= 0.01:
+                        continue
+                    greeks = calculate_greeks(current_price, k, t_years, iv, rf_rate)
+                    if not greeks:
+                        continue
+                    # Dollar gamma per 1% move, scaled to millions of $.
+                    gex = greeks['gamma'] * oi * 100 * current_price ** 2 * 0.01 / 1e6
+                    bucket = agg.setdefault(k, {'call': 0.0, 'put': 0.0})
+                    bucket[side] += gex
+        if not agg:
+            return None
+
+        strikes  = sorted(agg.keys())
+        call_gex = [agg[k]['call'] for k in strikes]    # dealers long calls  → +
+        put_gex  = [-agg[k]['put'] for k in strikes]    # dealers short puts  → −
+        net_gex  = [c + p for c, p in zip(call_gex, put_gex)]
+
+        # $5-binned aggregation: collapse minor/weekly strikes into the round
+        # institutional levels so a single noisy strike can't masquerade as a
+        # wall. Purely a visual view — stats below stay on the precise strikes.
+        bin_agg: dict = {}
+        for k in strikes:
+            slot = bin_agg.setdefault(round(k / 5.0) * 5, {'call': 0.0, 'put': 0.0})
+            slot['call'] += agg[k]['call']
+            slot['put']  += agg[k]['put']
+        bin_strikes = sorted(bin_agg.keys())
+        bin_call = [bin_agg[k]['call'] for k in bin_strikes]
+        bin_put  = [-bin_agg[k]['put'] for k in bin_strikes]
+        bin_net  = [c + p for c, p in zip(bin_call, bin_put)]
+
+        # Cumulative net GEX from the lowest strike up. Its zero crossing is the
+        # gamma flip; its slope at a strike is the local gamma density (steep =
+        # concentrated/pinning, flat = thin/air-pocket).
+        cum     = list(np.cumsum(net_gex))
+        bin_cum = list(np.cumsum(bin_net))
+
+        # Walls = largest gamma concentration on the side of spot where it can
+        # actually act as resistance/support. A call wall below spot (or put wall
+        # above) is meaningless, so constrain by side, falling back to the global
+        # extreme only if one side is empty.
+        def _wall(vals, want_above, pick):
+            sided = [(v, k) for v, k in zip(vals, strikes)
+                     if (k >= current_price) == want_above]
+            pool  = [(v, k) for v, k in (sided or list(zip(vals, strikes)))
+                     if (v > 0 if pick is max else v < 0)]
+            return pick(pool)[1] if pool else None
+
+        call_wall = _wall(call_gex, want_above=True,  pick=max)
+        put_wall  = _wall(put_gex,  want_above=False, pick=min)
+
+        # Gamma flip: strike where cumulative net GEX crosses zero (linear-
+        # interpolated). Below it dealers are net-short gamma (trend-amplifying);
+        # above it net-long gamma (mean-reverting / vol-dampening).
+        gamma_flip = None
+        for i in range(1, len(cum)):
+            if (cum[i - 1] <= 0 < cum[i]) or (cum[i - 1] >= 0 > cum[i]):
+                x0, x1, y0, y1 = strikes[i - 1], strikes[i], cum[i - 1], cum[i]
+                gamma_flip = round(float(x0 + (x1 - x0) * (-y0) / (y1 - y0)), 2) if y1 != y0 else float(x1)
+                break
+
+        total_gex = float(np.sum(net_gex))
+
+        # Top concentration nodes: the strikes carrying the most gamma (by |net|),
+        # their share of total gross gamma, and the hedging behaviour they impose.
+        # The leaderboard a trader reads instead of eyeballing a 100-point axis.
+        gross  = sum(abs(v) for v in net_gex) or 1.0
+        ranked = sorted(zip(strikes, net_gex, call_gex, put_gex),
+                        key=lambda t: abs(t[1]), reverse=True)
+        top_nodes = [{
+            'strike': round(k, 2),
+            'net':    round(n, 1),
+            'pct':    round(abs(n) / gross * 100, 1),
+            'kind':   'Vol-dampening' if n >= 0 else 'Trend-amplifying',
+            'side':   'Call' if abs(c) >= abs(p) else 'Put',
+        } for k, n, c, p in ranked[:5]]
+
+        # Symmetric, locked axes so bar proportions reflect real positioning
+        # shifts rather than Plotly auto-scaling one side independently.
+        bar_max = max([abs(v) for v in call_gex + put_gex + net_gex
+                       + bin_call + bin_put + bin_net] or [1.0]) * 1.08
+        cum_max = max([abs(v) for v in cum + bin_cum] or [1.0]) * 1.08
+        net_color     = ['#10b981' if v >= 0 else '#f43f5e' for v in net_gex]
+        bin_net_color = ['#10b981' if v >= 0 else '#f43f5e' for v in bin_net]
+
+        fig = go.Figure()
+        # Trace order is load-bearing — the toggle buttons index into it below.
+        # 0 call·raw  1 put·raw  2 net·raw  3 cum·raw
+        fig.add_trace(go.Bar(y=strikes, x=call_gex, orientation='h', name='Call GEX',
+                             marker_color='#10b981', marker_line_width=0, visible=True))
+        fig.add_trace(go.Bar(y=strikes, x=put_gex, orientation='h', name='Put GEX',
+                             marker_color='#f43f5e', marker_line_width=0, visible=True))
+        fig.add_trace(go.Bar(y=strikes, x=net_gex, orientation='h', name='Net GEX',
+                             marker_color=net_color, marker_line_width=0, visible=False))
+        fig.add_trace(go.Scatter(y=strikes, x=cum, mode='lines', name='Cumulative',
+                             xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             visible=True))
+        # 4 call·$5  5 put·$5  6 net·$5  7 cum·$5
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_call, orientation='h', name='Call GEX',
+                             marker_color='#10b981', marker_line_width=0, visible=False))
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_put, orientation='h', name='Put GEX',
+                             marker_color='#f43f5e', marker_line_width=0, visible=False))
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_net, orientation='h', name='Net GEX',
+                             marker_color=bin_net_color, marker_line_width=0, visible=False))
+        fig.add_trace(go.Scatter(y=bin_strikes, x=bin_cum, mode='lines', name='Cumulative',
+                             xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             visible=False))
+
+        fig.add_hline(y=current_price, line_dash='solid', line_color='#f59e0b',
+                      line_width=1.5, annotation_text=f'Spot ${current_price:.2f}',
+                      annotation_position='top right')
+        if gamma_flip:
+            fig.add_hline(y=gamma_flip, line_dash='dash', line_color='#6366f1',
+                          line_width=1, annotation_text=f'γ-flip ${gamma_flip}',
+                          annotation_position='bottom right')
+
+        def _vis(shown):
+            return [i in shown for i in range(8)]
+        buttons = [
+            dict(label='Call / Put',      method='update', args=[{'visible': _vis({0, 1, 3})}]),
+            dict(label='Net',             method='update', args=[{'visible': _vis({2, 3})}]),
+            dict(label='Call / Put · $5', method='update', args=[{'visible': _vis({4, 5, 7})}]),
+            dict(label='Net · $5',        method='update', args=[{'visible': _vis({6, 7})}]),
+        ]
+
+        fig.update_layout(
+            barmode='relative',
+            xaxis=dict(title='Gamma Exposure ($M per 1% move)', range=[-bar_max, bar_max],
+                       zeroline=True, zerolinecolor='rgba(120,120,120,0.45)'),
+            xaxis2=dict(overlaying='x', side='top', range=[-cum_max, cum_max],
+                        showgrid=False, zeroline=False, tickfont=dict(color='#6366f1', size=9)),
+            yaxis_title='Strike ($)',
+            template='plotly_white',
+            height=460,
+            margin=dict(l=60, r=30, t=46, b=78),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', xanchor='center', x=0.5, yanchor='top', y=-0.14),
+            bargap=0.12,
+            updatemenus=[dict(type='dropdown', direction='down', x=0, y=1.12,
+                              xanchor='left', yanchor='bottom', showactive=True,
+                              pad=dict(t=2, b=2), font=dict(size=10), buttons=buttons)],
+        )
+        return {
+            'chart': fig.to_html(full_html=False, include_plotlyjs=False),
+            'stats': {
+                'total_gex': round(total_gex, 1),
+                'regime': 'positive' if total_gex >= 0 else 'negative',
+                'call_wall': call_wall,
+                'put_wall': put_wall,
+                'gamma_flip': gamma_flip,
+                'top_nodes': top_nodes,
+                'dte_range': f"{selected[0][2]}–{selected[-1][2]}d",
+                'n_expirations': len(selected),
+            },
+        }
+    except Exception as e:
+        print(f"GEX profile failed for {ticker}: {e}")
         return None
 
 
@@ -1304,6 +1534,11 @@ def analytics_page():
     # Attach options smile
     data['charts']['options_smile'] = get_options_smile(ticker, data['current_price'])
 
+    # Attach dealer Gamma Exposure (GEX) profile
+    gex = get_gex_profile(ticker, data['current_price'])
+    data['charts']['gex'] = gex['chart'] if gex else None
+    data['gex'] = gex['stats'] if gex else None
+
     # Attach insider chart (needs price df)
     price_df = get_or_fetch_prices(ticker)
     if price_df is not None:
@@ -1446,6 +1681,208 @@ def positioning_api(ticker):
     data = compute_positioning(ticker)
     data['insider'].pop('chart', None)
     data['institutional'].pop('chart', None)
+    return jsonify(data)
+
+
+def normal_cdf(x):
+    """Cumulative distribution function of standard normal distribution."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def normal_pdf(x):
+    """Probability density function of standard normal distribution."""
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
+def calculate_greeks(s, k, t, v, r=0.045):
+    """Calculate Black-Scholes option pricing and greeks."""
+    if t <= 0:
+        t = 1e-5
+    if v <= 0:
+        v = 1e-5
+    try:
+        d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
+        d2 = d1 - v * math.sqrt(t)
+        
+        pdf_d1 = normal_pdf(d1)
+        cdf_d1 = normal_cdf(d1)
+        cdf_d2 = normal_cdf(d2)
+        
+        cdf_minus_d1 = normal_cdf(-d1)
+        cdf_minus_d2 = normal_cdf(-d2)
+        
+        # Call Greeks
+        call_delta = cdf_d1
+        call_theta = (-(s * pdf_d1 * v) / (2 * math.sqrt(t)) - r * k * math.exp(-r * t) * cdf_d2) / 365.0
+        call_rho = (k * t * math.exp(-r * t) * cdf_d2) / 100.0
+        
+        # Put Greeks
+        put_delta = cdf_d1 - 1.0
+        put_theta = (-(s * pdf_d1 * v) / (2 * math.sqrt(t)) + r * k * math.exp(-r * t) * cdf_minus_d2) / 365.0
+        put_rho = (-k * t * math.exp(-r * t) * cdf_minus_d2) / 100.0
+        
+        # Common Greeks
+        gamma = pdf_d1 / (s * v * math.sqrt(t))
+        vega = (s * math.sqrt(t) * pdf_d1) / 100.0
+        
+        return {
+            'call_delta': round(call_delta, 4),
+            'call_theta': round(call_theta, 4),
+            'call_rho': round(call_rho, 4),
+            'put_delta': round(put_delta, 4),
+            'put_theta': round(put_theta, 4),
+            'put_rho': round(put_rho, 4),
+            'gamma': round(gamma, 4),
+            'vega': round(vega, 4),
+        }
+    except Exception as e:
+        print(f"Error calculating greeks: {e}")
+        return None
+
+
+def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
+    """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price."""
+    try:
+        stock = yf.Ticker(ticker.upper())
+        expirations = stock.options
+        if not expirations:
+            return None
+        
+        if not expiration_date or expiration_date not in expirations:
+            expiration_date = expirations[0]
+            
+        chain = stock.option_chain(expiration_date)
+        calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+        puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+        
+        # Determine spot price
+        hist = stock.history(period="1d")
+        if hist.empty:
+            df = get_or_fetch_prices(ticker)
+            if df is not None and not df.empty:
+                spot_price = float(df['close'].iloc[-1])
+            else:
+                spot_price = None
+        else:
+            spot_price = float(hist['Close'].iloc[-1])
+            
+        if not spot_price:
+            return None
+            
+        exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
+        today = datetime.now()
+        days_to_exp = (exp_dt - today).days + 1
+        t_years = max(1e-5, days_to_exp / 365.0)
+        
+        lower_bound = spot_price * 0.70
+        upper_bound = spot_price * 1.30
+        
+        call_strikes = calls['strike'].tolist() if not calls.empty else []
+        put_strikes = puts['strike'].tolist() if not puts.empty else []
+        all_strikes = sorted(list(set(call_strikes + put_strikes)))
+        filtered_strikes = [s for s in all_strikes if lower_bound <= s <= upper_bound]
+        
+        call_dict = calls.set_index('strike').to_dict('index') if not calls.empty else {}
+        put_dict = puts.set_index('strike').to_dict('index') if not puts.empty else {}
+        
+        rows = []
+        for strike in filtered_strikes:
+            c_opt = call_dict.get(strike, {})
+            p_opt = put_dict.get(strike, {})
+            
+            c_iv = c_opt.get('impliedVolatility', 0)
+            p_iv = p_opt.get('impliedVolatility', 0)
+            
+            # Avoid invalid values
+            c_iv = c_iv if (c_iv and not np.isnan(c_iv)) else 0
+            p_iv = p_iv if (p_iv and not np.isnan(p_iv)) else 0
+            
+            # Cross-IV fallback: if one side is missing IV but the other side has it,
+            # use the other side's IV for Greeks computation (Put-Call parity / arbitrage alignment)
+            c_iv_calc = c_iv
+            p_iv_calc = p_iv
+            if c_iv <= 0.01 and p_iv > 0.01:
+                c_iv_calc = p_iv
+            if p_iv <= 0.01 and c_iv > 0.01:
+                p_iv_calc = c_iv
+            
+            c_greeks = calculate_greeks(spot_price, strike, t_years, c_iv_calc, rf_rate) if c_iv_calc > 0.01 else None
+            p_greeks = calculate_greeks(spot_price, strike, t_years, p_iv_calc, rf_rate) if p_iv_calc > 0.01 else None
+            
+            c_bid = c_opt.get('bid', 0)
+            c_ask = c_opt.get('ask', 0)
+            c_last = c_opt.get('lastPrice', 0)
+            
+            p_bid = p_opt.get('bid', 0)
+            p_ask = p_opt.get('ask', 0)
+            p_last = p_opt.get('lastPrice', 0)
+            
+            rows.append({
+                'strike': strike,
+                'call_bid': c_bid if not np.isnan(c_bid) else 0,
+                'call_ask': c_ask if not np.isnan(c_ask) else 0,
+                'call_last': c_last if not np.isnan(c_last) else 0,
+                'call_volume': int(c_opt.get('volume', 0)) if (c_opt.get('volume') is not None and not np.isnan(c_opt.get('volume', 0))) else 0,
+                'call_oi': int(c_opt.get('openInterest', 0)) if (c_opt.get('openInterest') is not None and not np.isnan(c_opt.get('openInterest', 0))) else 0,
+                'call_iv': round(c_iv * 100, 2),
+                'call_delta': c_greeks['call_delta'] if c_greeks else 'N/A',
+                'call_gamma': c_greeks['gamma'] if c_greeks else 'N/A',
+                'call_theta': c_greeks['call_theta'] if c_greeks else 'N/A',
+                'call_vega': c_greeks['vega'] if c_greeks else 'N/A',
+                'call_rho': c_greeks['call_rho'] if c_greeks else 'N/A',
+                'put_bid': p_bid if not np.isnan(p_bid) else 0,
+                'put_ask': p_ask if not np.isnan(p_ask) else 0,
+                'put_last': p_last if not np.isnan(p_last) else 0,
+                'put_volume': int(p_opt.get('volume', 0)) if (p_opt.get('volume') is not None and not np.isnan(p_opt.get('volume', 0))) else 0,
+                'put_oi': int(p_opt.get('openInterest', 0)) if (p_opt.get('openInterest') is not None and not np.isnan(p_opt.get('openInterest', 0))) else 0,
+                'put_iv': round(p_iv * 100, 2),
+                'put_delta': p_greeks['put_delta'] if p_greeks else 'N/A',
+                'put_gamma': p_greeks['gamma'] if p_greeks else 'N/A',
+                'put_theta': p_greeks['put_theta'] if p_greeks else 'N/A',
+                'put_vega': p_greeks['vega'] if p_greeks else 'N/A',
+                'put_rho': p_greeks['put_rho'] if p_greeks else 'N/A',
+            })
+            
+        return {
+            'ticker': ticker.upper(),
+            'expirations': expirations,
+            'selected_expiration': expiration_date,
+            'spot_price': spot_price,
+            'days_to_expiration': days_to_exp,
+            'options': rows
+        }
+    except Exception as e:
+        print(f"Error compiling options greeks: {e}")
+        return None
+
+
+@app.route('/live')
+def live_page():
+    ticker = request.args.get('ticker', '').strip().upper()
+    return render_template('live.html', ticker=ticker)
+
+
+@app.route('/api/config')
+def api_config():
+    return jsonify({
+        "finnhub_key": providers.FINNHUB_KEY,
+        "has_finnhub": bool(providers.FINNHUB_KEY),
+    })
+
+
+@app.route('/api/options-greeks/<ticker>')
+def options_greeks_api(ticker):
+    expiration = request.args.get('expiration', '')
+    rf_rate_raw = request.args.get('rf_rate', '0.045')
+    try:
+        rf_rate = float(rf_rate_raw)
+    except ValueError:
+        rf_rate = 0.045
+        
+    data = get_options_greeks_data(ticker, expiration, rf_rate)
+    if not data:
+        return jsonify({"error": f"Could not retrieve options data for {ticker}"}), 404
+        
     return jsonify(data)
 
 

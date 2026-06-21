@@ -1,8 +1,9 @@
 # ticker/change
 
-A Flask stock-analytics dashboard. Enter a ticker and get three connected views:
-a multi-period price-change table, a quantitative risk/statistics workbench, and a
-market-positioning panel built from institutional, insider, and valuation data.
+A Flask stock-analytics dashboard. Enter a ticker and get four connected views:
+a multi-period price-change table, a quantitative risk/statistics workbench, a
+market-positioning panel built from institutional, insider, and valuation data, and
+a live market-microstructure + options-Greeks terminal.
 
 Price history comes from `yfinance` and is cached in SQLite; positioning data comes
 from free-tier APIs (Finnhub, FMP, SEC EDGAR) and is cached separately. Every data
@@ -35,6 +36,8 @@ Quantitative risk and return analysis computed from the cached price history:
 - **Seasonality** — average return by calendar month.
 - **Volume profile** — volume distribution by price level.
 - **Options volatility smile** — implied vol across strikes.
+- **Dealer Gamma Exposure (GEX)** — per-strike dealer gamma from an in-house Black-Scholes
+  engine, surfacing the gamma-flip strike, call wall (resistance), and put wall (support).
 - **Cumulative return vs benchmarks** — growth of $100 against SPY and QQQ.
 - **Analyst price target** gauge (low / mean / median / high vs current price).
 - **Fundamentals panel** — P/E (trailing & forward), EV/EBITDA, P/B, EPS, short % of float,
@@ -53,9 +56,24 @@ Quantitative risk and return analysis computed from the cached price history:
 Each panel renders its own "add this key" prompt when a provider is unconfigured, so the
 page is useful out of the box (SEC EDGAR needs no key) and gets richer as you add keys.
 
+### ⚡ Live microstructure & Greeks (`/live`)
+A real-time terminal split across two tabs:
+
+- **Market microstructure** — a streaming **trades feed**, an animated **Level 2 order book**
+  with cumulative depth and a bid/ask **imbalance** bar, plus live **VWAP**, **spread**, and
+  short-window **volatility**. Trades stream from the **Finnhub WebSocket** when a
+  `FINNHUB_API_KEY` is set; with no key (or on disconnect) the page automatically falls back to
+  a **local simulation** so it still animates out of the box. A status badge shows whether the
+  feed is `Live WebSocket` or `Simulated`. *(L2 depth is modelled around the live spot — the
+  free Finnhub feed provides trades, not full book depth.)*
+- **Option Greeks & payoff simulator** — an **option chain** with Black-Scholes Greeks
+  (delta, gamma, theta, vega, rho) computed in-house, a **Greeks visualizer** (delta / gamma /
+  IV smile / GEX), an adjustable risk-free rate and expiration selector, and an **options
+  payoff simulator** (long/short calls & puts) with break-even, max-profit, and max-loss stats.
+
 ### 🎨 UI
 - Modern Tailwind design with a **dark mode** toggle (preference persisted).
-- Cross-links between the price, analytics, and positioning views for the same ticker.
+- Cross-links between the price, analytics, positioning, and live views for the same ticker.
 - All charts are interactive Plotly (zoom, pan, hover).
 
 ---
@@ -139,6 +157,8 @@ JSON variants of every view, plus a health check:
 | `GET /api/chart-data/<ticker>` | OHLCV history (supports `?start_date=&end_date=`) |
 | `GET /api/analytics/<ticker>` | Risk stats and metrics (chart HTML stripped) |
 | `GET /api/positioning/<ticker>` | Valuation, recommendations, insider, institutional data |
+| `GET /api/options-greeks/<ticker>` | Option chain with Black-Scholes Greeks (supports `?expiration=&rf_rate=`) |
+| `GET /api/config` | Client config for the live page (Finnhub key availability) |
 | `GET /health` | `{"status": "ok"}` for uptime checks |
 
 ---
@@ -160,7 +180,7 @@ JSON variants of every view, plus a health check:
 app.py            Flask app: routes, analytics, chart generation, fetch orchestration
 providers.py      Free-tier API clients (Finnhub, FMP, SEC EDGAR) with caching + retries
 db.py             SQLite layer: price cache, provider cache, freshness helpers
-templates/        Jinja2 templates (base, index, stock, analytics, positioning)
+templates/        Jinja2 templates (base, index, stock, analytics, positioning, live)
 requirements.txt  Python dependencies
 Dockerfile        Container build for deployment
 Procfile          Gunicorn process definition for Render/Heroku
