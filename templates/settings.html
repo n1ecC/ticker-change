@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - Ticker-Change{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+  <!-- Header -->
+  <div>
+    <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">API Key Settings</h1>
+    <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      All keys are optional. The app ships with a shared Finnhub key and works out of the box —
+      add your own keys here and they’ll be used as fallbacks when the shared key hits its
+      free-tier quota. Keys are stored locally on the server (SQLite) and never leave it.
+    </p>
+  </div>
+
+  {% if saved %}
+  <div class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-semibold">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+    Settings saved.
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/settings" class="space-y-6">
+
+    <!-- Finnhub -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-1">
+        <label for="finnhub_api_key" class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Finnhub API Key(s)</label>
+        {% if status.finnhub %}
+        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          {{ status.finnhub_key_count }} key{{ '' if status.finnhub_key_count == 1 else 's' }} active
+        </span>
+        {% else %}
+        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-500/10 text-zinc-500">none</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+        Powers valuation, insider, analyst, and live-feed data.
+        Free tier: 60 req/min — <a href="https://finnhub.io" target="_blank" rel="noopener" class="text-amber-500 hover:underline">get a free key</a>.
+        Enter multiple keys (one per line, or comma-separated) to rotate through them as each quota runs out.
+      </p>
+      <textarea id="finnhub_api_key" name="finnhub_api_key" rows="3"
+        placeholder="your-finnhub-key&#10;optional-second-key"
+        class="w-full px-3 py-2 text-sm font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 resize-y">{{ current.finnhub_api_key }}</textarea>
+    </div>
+
+    <!-- FMP -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-1">
+        <label for="fmp_api_key" class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Financial Modeling Prep API Key(s)</label>
+        {% if status.fmp %}
+        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          {{ status.fmp_key_count }} key{{ '' if status.fmp_key_count == 1 else 's' }} active
+        </span>
+        {% else %}
+        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-500/10 text-zinc-500">none</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+        Powers top institutional (13F) holders.
+        Free tier: 250 req/day — <a href="https://financialmodelingprep.com" target="_blank" rel="noopener" class="text-amber-500 hover:underline">get a free key</a>.
+        Multiple keys rotate on quota exhaustion.
+      </p>
+      <textarea id="fmp_api_key" name="fmp_api_key" rows="2"
+        placeholder="your-fmp-key"
+        class="w-full px-3 py-2 text-sm font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 resize-y">{{ current.fmp_api_key }}</textarea>
+    </div>
+
+    <!-- SEC User-Agent -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+      <label for="sec_user_agent" class="text-sm font-bold text-zinc-900 dark:text-zinc-50">SEC EDGAR Contact (User-Agent)</label>
+      <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-3">
+        Keyless, but the SEC requires a contact string for EDGAR requests
+        (Form 3/4/5 and 13F filings). Format: <span class="font-mono">Your Name your@email.com</span>.
+      </p>
+      <input id="sec_user_agent" name="sec_user_agent" type="text"
+        value="{{ current.sec_user_agent }}"
+        placeholder="Your Name your@email.com"
+        class="w-full px-3 py-2 text-sm font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500">
+    </div>
+
+    <!-- yfinance note -->
+    <div class="bg-zinc-100/60 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex items-start gap-3">
+      <svg class="w-5 h-5 text-zinc-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+      </svg>
+      <p class="text-xs text-zinc-500 dark:text-zinc-400">
+        <span class="font-semibold text-zinc-700 dark:text-zinc-300">Price data (yfinance) needs no key.</span>
+        Historical and current prices come from Yahoo Finance, which is keyless — there’s nothing to configure here for it.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="submit"
+        class="px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors">
+        Save settings
+      </button>
+      <a href="/" class="px-5 py-2.5 text-sm font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

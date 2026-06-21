@@ -1417,7 +1417,7 @@ def compute_analytics(ticker: str) -> dict | None:
         """Compute forward price estimate at horizon_days using Monte Carlo GBM.
         Returns: (median, p5, p25, p75, p95, prob_gain, prob_up20, prob_dn20)"""
         rng = np.random.default_rng(seed)
-        shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon_days))
+        shocks = rng.normal(mu, sigma, size=(n_sims, horizon_days))
         paths = current * np.exp(np.cumsum(shocks, axis=1))
         terminal = paths[:, -1]
         return {
@@ -1449,7 +1449,7 @@ def compute_analytics(ticker: str) -> dict | None:
         horizon = 252
         n_sims = 1000
         rng = np.random.default_rng(42)
-        shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon))
+        shocks = rng.normal(mu, sigma, size=(n_sims, horizon))
         paths = current_price * np.exp(np.cumsum(shocks, axis=1))
         paths = np.hstack([np.full((n_sims, 1), current_price), paths])
 
@@ -1894,10 +1894,452 @@ def api_config():
     })
 
 
+@app.route('/momentum')
+def momentum_page():
+    COST_BPS = 7.5
+    tab = request.args.get('tab', 'universe')
+    symbol = request.args.get('symbol', '').upper().strip()
+
+    # 1. Fetch all symbols in database
+    with db.get_conn() as conn:
+        rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
+    symbols = [r["symbol"] for r in rows if r["symbol"] not in ["SPY", "QQQ"]]
+    if not symbols:
+        return render_template('momentum.html', data=None, error="No stock price data available in the database. Please visit the homepage and search for tickers first.")
+
+    # Sort symbols for the dropdown list
+    available_symbols = sorted(symbols)
+
+    if tab == 'ticker':
+        if not symbol:
+            # Default to the first symbol if none searched
+            symbol = available_symbols[0] if available_symbols else ""
+            
+        if symbol not in available_symbols:
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='ticker',
+                available_symbols=available_symbols,
+                searched_symbol=symbol,
+                error=f"Ticker '{symbol}' is not currently cached in the database. Please search for it on the homepage first to download its history."
+            )
+
+        # Load ticker price data
+        df = db.get_prices(symbol)
+        if df is None or len(df) < 273:  # 252 + 21
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='ticker',
+                available_symbols=available_symbols,
+                searched_symbol=symbol,
+                error=f"Ticker '{symbol}' has insufficient price history (need at least 273 trading days)."
+            )
+
+        close = df['close']
+        daily_rets = close.pct_change()
+        
+        # Momentum score metrics
+        latest_price = float(close.iloc[-1])
+        
+        # Compute scores at various horizons
+        # 12-1 momentum: 252 days ago to 21 days ago
+        p_latest = close.iloc[-1]
+        p_21 = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
+        p_63 = close.iloc[-64] if len(close) >= 64 else close.iloc[0]
+        p_126 = close.iloc[-127] if len(close) >= 127 else close.iloc[0]
+        p_252 = close.iloc[-253] if len(close) >= 253 else close.iloc[0]
+        
+        mom_12_1 = (p_21 - p_252) / p_252 if p_252 > 0 else 0.0
+        mom_6m = (p_latest - p_126) / p_126 if p_126 > 0 else 0.0
+        mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
+        mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
+
+        # Calculate rank in universe
+        universe_scores = {}
+        for s in symbols:
+            s_df = db.get_prices(s)
+            if s_df is not None and len(s_df) >= 253:
+                p_past_s = s_df['close'].iloc[-253]
+                p_recent_s = s_df['close'].iloc[-22]
+                if p_past_s > 0:
+                    universe_scores[s] = (p_recent_s - p_past_s) / p_past_s
+        sorted_univ = sorted(universe_scores.items(), key=lambda x: x[1], reverse=True)
+        univ_ranks = {s: idx + 1 for idx, (s, _) in enumerate(sorted_univ)}
+        rank = univ_ranks.get(symbol, len(symbols))
+
+        # Time-Series Momentum Backtest
+        # Signal: Long if 12-1 momentum is positive, cash (0) otherwise
+        # Rolling 12-1 momentum score at each day:
+        roll_score = close.shift(21) / close.shift(252) - 1
+        signal = np.where(roll_score > 0, 1.0, 0.0)
+        signal = pd.Series(signal, index=df.index).shift(1).fillna(0.0)
+        
+        trades = signal.diff().abs().fillna(0.0)
+        cost_bps = COST_BPS / 1e4
+        strat_rets = signal * daily_rets - trades * cost_bps
+        
+        # Start backtest from index 253
+        backtest_dates = df.index[253:]
+        strat_series = strat_rets.iloc[253:]
+        hold_series = daily_rets.iloc[253:]
+        
+        # Compute performance stats
+        def get_stats(series):
+            cum = (1 + series).prod() - 1
+            ann_ret = (1 + series.mean()) ** 252 - 1
+            ann_vol = series.std() * np.sqrt(252)
+            sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
+            
+            # Drawdown
+            cum_prod = (1 + series).cumprod()
+            running_max = cum_prod.cummax()
+            drawdown = (cum_prod - running_max) / (running_max + 1e-8)
+            max_dd = drawdown.min()
+            return {
+                "total_return": round(cum * 100, 1),
+                "annual_return": round(ann_ret * 100, 1),
+                "volatility": round(ann_vol * 100, 1),
+                "sharpe": round(sharpe, 2),
+                "max_dd": round(max_dd * 100, 1),
+            }
+            
+        strat_stats = get_stats(strat_series)
+        hold_stats = get_stats(hold_series)
+        
+        # Plotly chart: Strategy vs Buy & Hold
+        cum_strat = (1 + strat_series).cumprod() * 10000
+        cum_hold = (1 + hold_series).cumprod() * 10000
+        
+        # Convert index to string for guaranteed clean parsing in Plotly
+        backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
+        
+        # Extract trade signals
+        trade_signals = signal.iloc[253:]
+        trade_dates = backtest_dates
+        sig_diff = trade_signals.diff().fillna(0.0)
+        
+        # Entries: signal changes from 0 to 1
+        buys = sig_diff == 1
+        # Exits: signal changes from 1 to 0
+        sells = sig_diff == -1
+        
+        buy_dates = trade_dates[buys]
+        sell_dates = trade_dates[sells]
+        
+        # Calculate individual trade returns
+        trade_records = []
+        in_trade = False
+        entry_idx = 0
+        
+        for idx in range(len(trade_signals)):
+            sig = trade_signals.iloc[idx]
+            if sig == 1 and not in_trade:
+                in_trade = True
+                entry_idx = idx
+            elif sig == 0 and in_trade:
+                in_trade = False
+                ret_val = close.iloc[253 + idx] / close.iloc[253 + entry_idx] - 1 - cost_bps * 2
+                trade_records.append(ret_val)
+                
+        if in_trade:
+            ret_val = close.iloc[-1] / close.iloc[253 + entry_idx] - 1 - cost_bps
+            trade_records.append(ret_val)
+            
+        trade_count = len(trade_records)
+        wins = [r for r in trade_records if r > 0]
+        losses = [r for r in trade_records if r <= 0]
+        
+        win_rate = round(len(wins) / trade_count * 100, 1) if trade_count > 0 else 0.0
+        profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
+        
+        fig_perf = go.Figure()
+        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='Trend-Following (Long/Cash)', line=dict(color='#fbbf24', width=2)))
+        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_hold.tolist(), mode='lines', name=f'Buy & Hold {symbol}', line=dict(color='#64748b', width=1.5, dash='dash')))
+        
+        # Add Buy entry markers on the performance chart
+        if not buy_dates.empty:
+            buy_dates_str = buy_dates.strftime('%Y-%m-%d').tolist()
+            buy_prices = cum_strat.loc[buy_dates].tolist()
+            fig_perf.add_trace(go.Scatter(
+                x=buy_dates_str, y=buy_prices,
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=10, color='#10b981', line=dict(width=1, color='black')),
+                name='Buy Entry'
+            ))
+            
+        # Add Sell exit markers on the performance chart
+        if not sell_dates.empty:
+            sell_dates_str = sell_dates.strftime('%Y-%m-%d').tolist()
+            sell_prices = cum_strat.loc[sell_dates].tolist()
+            fig_perf.add_trace(go.Scatter(
+                x=sell_dates_str, y=sell_prices,
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=10, color='#ef4444', line=dict(width=1, color='black')),
+                name='Sell Exit'
+            ))
+            
+        fig_perf.update_layout(
+            title=f'Trend-Following Strategy vs Buy & Hold for {symbol}',
+            xaxis_title='Date',
+            yaxis_title='Portfolio Value ($)',
+            template='plotly_white',
+            height=350,
+            margin=dict(l=50, r=30, t=60, b=80),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5),
+            font=dict(family='Inter, sans-serif')
+        )
+        perf_chart_html = fig_perf.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Plotly chart: Drawdowns comparison
+        dd_strat = (cum_strat - cum_strat.cummax()) / cum_strat.cummax() * 100
+        dd_hold = (cum_hold - cum_hold.cummax()) / cum_hold.cummax() * 100
+        
+        fig_dd = go.Figure()
+        fig_dd.add_trace(go.Scatter(x=backtest_dates_str, y=dd_strat.tolist(), mode='lines', name='Trend-Following DD', line=dict(color='#fbbf24', width=1.5), fill='tozeroy', fillcolor='rgba(251,191,36,0.1)'))
+        fig_dd.add_trace(go.Scatter(x=backtest_dates_str, y=dd_hold.tolist(), mode='lines', name=f'{symbol} DD', line=dict(color='#ef4444', width=1, dash='dash'), fill='tozeroy', fillcolor='rgba(239,68,68,0.15)'))
+        
+        fig_dd.update_layout(
+            title='Drawdown Comparison (%)',
+            xaxis_title='Date',
+            yaxis_title='Drawdown (%)',
+            template='plotly_white',
+            height=250,
+            margin=dict(l=50, r=30, t=60, b=80),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='top', y=-0.22, xanchor='center', x=0.5),
+            font=dict(family='Inter, sans-serif')
+        )
+        dd_chart_html = fig_dd.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Plotly chart: Rolling 12-1 Momentum Score
+        valid_score = roll_score.iloc[252:] * 100
+        fig_roll = go.Figure()
+        fig_roll.add_trace(go.Scatter(x=df.index[252:].strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
+        fig_roll.add_hline(
+            y=0,
+            line_dash='solid',
+            line_color='#ef4444',
+            line_width=1,
+            annotation_text="Zero Threshold (Trend Switch)",
+            annotation_position="bottom right",
+            annotation_font_color='#71717a'
+        )
+        
+        fig_roll.update_layout(
+            title=f'Rolling 12-1 Momentum Score (%) for {symbol}',
+            xaxis_title='Date',
+            yaxis_title='Momentum Score (%)',
+            template='plotly_white',
+            height=280,
+            margin=dict(l=50, r=30, t=60, b=80),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='top', y=-0.2, xanchor='center', x=0.5),
+            font=dict(family='Inter, sans-serif')
+        )
+        roll_chart_html = fig_roll.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Determine current trend state
+        current_score = roll_score.iloc[-1]
+        trend_state = "BULLISH (Long)" if current_score > 0 else "BEARISH (Flat/Cash)"
+        trend_color = "text-emerald-500" if current_score > 0 else "text-rose-500"
+        
+        data = {
+            "symbol": symbol,
+            "latest_price": latest_price,
+            "mom_12_1": round(mom_12_1 * 100, 2),
+            "mom_6m": round(mom_6m * 100, 2),
+            "mom_3m": round(mom_3m * 100, 2),
+            "mom_1m": round(mom_1m * 100, 2),
+            "rank": rank,
+            "total_rank_count": len(universe_scores),
+            "trend_state": trend_state,
+            "trend_color": trend_color,
+            "strat_stats": strat_stats,
+            "hold_stats": hold_stats,
+            "perf_chart_html": perf_chart_html,
+            "dd_chart_html": dd_chart_html,
+            "roll_chart_html": roll_chart_html,
+            "trade_count": trade_count,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
+            "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+        }
+        
+        return render_template(
+            'momentum.html',
+            data=data,
+            tab='ticker',
+            available_symbols=available_symbols,
+            searched_symbol=symbol,
+            error=None
+        )
+
+    # ELSE: Tab == 'universe'
+    # 2. Load close prices for these symbols
+    prices = {}
+    for t in symbols + ["SPY", "QQQ"]:
+        df = db.get_prices(t)
+        if df is not None:
+            prices[t] = df["close"]
+    
+    if not prices:
+        return render_template('momentum.html', data=None, error="Failed to load price data.")
+
+    price_df = pd.DataFrame(prices)
+    
+    # 3. Calculate 12-1 momentum scores for active tickers
+    momentum_lookback = 252
+    exclude_days = 21
+    
+    if len(price_df) < momentum_lookback + 2:
+        return render_template('momentum.html', data=None, error=f"Insufficient history in database. Need at least {momentum_lookback} daily bars.")
+        
+    scores = {}
+    latest_idx = len(price_df) - 1
+    recent_idx = latest_idx - exclude_days
+    past_idx = latest_idx - momentum_lookback
+    
+    for t in symbols:
+        if t in price_df.columns:
+            p_past = price_df[t].iloc[past_idx]
+            p_recent = price_df[t].iloc[recent_idx]
+            if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
+                scores[t] = (p_recent - p_past) / p_past
+                
+    # Sort symbols by momentum score
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    leaderboard = [{"symbol": t, "score": round(score * 100, 2), "rank": idx + 1} for idx, (t, score) in enumerate(sorted_scores)]
+    
+    top_5 = [t for t, _ in sorted_scores[:5]]
+    
+    # 4. Backtest Momentum Strategy rebalanced monthly
+    daily_rets = price_df.pct_change()
+    rebalance_freq = 21
+    start_idx = momentum_lookback + 1
+    
+    portfolio_returns = []
+    active_portfolio = []
+    backtest_dates = price_df.index[start_idx:]
+    
+    for i in range(start_idx, len(price_df)):
+        is_rebalance = (i - start_idx) % rebalance_freq == 0
+        if is_rebalance:
+            step_scores = {}
+            for t in symbols:
+                if t in price_df.columns:
+                    p_past = price_df[t].iloc[i - momentum_lookback]
+                    p_recent = price_df[t].iloc[i - exclude_days]
+                    if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
+                        step_scores[t] = (p_recent - p_past) / p_past
+            sorted_step = sorted(step_scores.items(), key=lambda x: x[1], reverse=True)
+            active_portfolio = [t for t, score in sorted_step[:5] if np.isfinite(score)]
+            
+        if active_portfolio:
+            daily_ret = daily_rets[active_portfolio].iloc[i].mean()
+        else:
+            daily_ret = 0.0
+            
+        if is_rebalance and i > start_idx:
+            daily_ret -= (COST_BPS / 1e4)
+            
+        portfolio_returns.append(daily_ret)
+        
+    strat_series = pd.Series(portfolio_returns, index=backtest_dates)
+    spy_series = daily_rets["SPY"].loc[backtest_dates] if "SPY" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
+    qqq_series = daily_rets["QQQ"].loc[backtest_dates] if "QQQ" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
+    
+    # Compute stats
+    def get_stats(series):
+        cum = (1 + series).prod() - 1
+        ann_ret = (1 + series.mean()) ** 252 - 1
+        ann_vol = series.std() * np.sqrt(252)
+        sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
+        
+        # Max drawdown
+        cum_prod = (1 + series).cumprod()
+        running_max = cum_prod.cummax()
+        drawdown = (cum_prod - running_max) / (running_max + 1e-8)
+        max_dd = drawdown.min()
+        return {
+            "total_return": round(cum * 100, 1),
+            "annual_return": round(ann_ret * 100, 1),
+            "volatility": round(ann_vol * 100, 1),
+            "sharpe": round(sharpe, 2),
+            "max_dd": round(max_dd * 100, 1),
+        }
+        
+    strat_stats = get_stats(strat_series)
+    spy_stats = get_stats(spy_series)
+    qqq_stats = get_stats(qqq_series)
+    
+    # Create interactive plot
+    cum_strat = (1 + strat_series).cumprod() * 10000
+    cum_spy = (1 + spy_series).cumprod() * 10000
+    cum_qqq = (1 + qqq_series).cumprod() * 10000
+    
+    # Convert index to string for guaranteed clean parsing in Plotly
+    backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat, mode='lines', name='12-1 Momentum Strategy (Top 5)', line=dict(color='#fbbf24', width=2)))
+    if "SPY" in daily_rets.columns:
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_spy, mode='lines', name='SPY (S&P 500) Benchmark', line=dict(color='#64748b', width=1.5, dash='dash')))
+    if "QQQ" in daily_rets.columns:
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_qqq, mode='lines', name='QQQ (Nasdaq 100) Benchmark', line=dict(color='#818cf8', width=1.5, dash='dash')))
+        
+    fig.update_layout(
+        title='Growth of $10,000 Investment',
+        xaxis_title='Date',
+        yaxis_title='Portfolio Value ($)',
+        template='plotly_white',
+        height=400,
+        margin=dict(l=50, r=30, t=60, b=80),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='top', y=-0.15, xanchor='center', x=0.5),
+        font=dict(family='Inter, sans-serif')
+    )
+    chart_html = fig.to_html(full_html=False, include_plotlyjs=False)
+    
+    data = {
+        "leaderboard": leaderboard,
+        "top_5": top_5,
+        "strat_stats": strat_stats,
+        "spy_stats": spy_stats,
+        "qqq_stats": qqq_stats,
+        "chart_html": chart_html,
+        "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
+        "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+    }
+    
+    return render_template(
+        'momentum.html',
+        data=data,
+        tab='universe',
+        available_symbols=available_symbols,
+        searched_symbol='',
+        error=None
+    )
+
+
 # User-configurable provider keys. Saved server-side (SQLite) so they apply to the
-# backend Finnhub/FMP calls. Stored keys act as quota fallbacks behind the built-in
-# dev key — see providers._ordered_keys / _finnhub_get / _fmp_get.
-SETTINGS_FIELDS = ("finnhub_api_key", "fmp_api_key", "sec_user_agent")
+# backend Finnhub/FMP/LLM calls. Stored keys act as quota fallbacks behind the
+# built-in dev key — see providers._ordered_keys / _finnhub_get / _fmp_get and the
+# AI provider fallback in ai.py.
+SETTINGS_FIELDS = (
+    "finnhub_api_key", "fmp_api_key", "sec_user_agent",
+) + providers.AI_SETTING_KEYS
 
 
 @app.route('/settings', methods=['GET', 'POST'])
