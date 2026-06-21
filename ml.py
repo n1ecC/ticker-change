@@ -46,6 +46,12 @@ FEATURES = [
     "atr_14", "hl_range",
     "dist_sma20", "dist_sma50", "dist_sma200",
     "vol_z", "mom_63",
+    # Advanced features
+    "gk_vol_10", "gk_vol_20",
+    "bb_width", "bb_pct",
+    "vol_trend_5_20",
+    "dist_ema8", "dist_ema21", "ema_cross_8_21",
+    "hl_range_std_10"
 ]
 
 
@@ -94,8 +100,37 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     feat["dist_sma20"] = close / close.rolling(20).mean() - 1
     feat["dist_sma50"] = close / close.rolling(50).mean() - 1
     feat["dist_sma200"] = close / close.rolling(200).mean() - 1
-    feat["vol_z"] = (df["volume"] - df["volume"].rolling(20).mean()) / df["volume"].rolling(20).std()
+    feat["vol_z"] = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std() + 1e-8)
     feat["mom_63"] = close.pct_change(63)
+
+    # Garman-Klass Volatility (more efficient intraday volatility estimator)
+    log_hl = np.log(df["high"] / df["low"] + 1e-8)
+    log_co = np.log(df["close"] / df["open"] + 1e-8)
+    gk = 0.5 * log_hl**2 - (2 * np.log(2) - 1) * log_co**2
+    feat["gk_vol_10"] = np.sqrt(gk.rolling(10).mean().clip(lower=0))
+    feat["gk_vol_20"] = np.sqrt(gk.rolling(20).mean().clip(lower=0))
+
+    # Bollinger Bands
+    sma20 = close.rolling(20).mean()
+    std20 = close.rolling(20).std()
+    upper_bb = sma20 + 2 * std20
+    lower_bb = sma20 - 2 * std20
+    feat["bb_width"] = (upper_bb - lower_bb) / (sma20 + 1e-8)
+    feat["bb_pct"] = (close - lower_bb) / (upper_bb - lower_bb + 1e-8)
+
+    # Volume trend
+    feat["vol_trend_5_20"] = df["volume"].rolling(5).mean() / (df["volume"].rolling(20).mean() + 1e-8)
+
+    # EMA crossovers
+    ema8 = close.ewm(span=8, adjust=False).mean()
+    ema21 = close.ewm(span=21, adjust=False).mean()
+    feat["dist_ema8"] = close / ema8 - 1
+    feat["dist_ema21"] = close / ema21 - 1
+    feat["ema_cross_8_21"] = ema8 / ema21 - 1
+
+    # Intraday range std
+    feat["hl_range_std_10"] = feat["hl_range"].rolling(10).std()
+
     return feat[FEATURES]
 
 
@@ -127,9 +162,34 @@ def triple_barrier_labels(df: pd.DataFrame) -> pd.Series:
     return pd.Series(labels, index=df.index)
 
 
-def _dataset(tickers: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def triple_barrier_returns(df: pd.DataFrame) -> pd.Series:
+    """Calculate actual trade returns (holding to exit barrier/timeout)."""
+    close = df["close"].to_numpy()
+    daily_vol = df["close"].pct_change().rolling(20).std().to_numpy()
+    n = len(close)
+    returns = np.full(n, np.nan)
+    for i in range(n - 1):
+        v = daily_vol[i]
+        if not np.isfinite(v) or v <= 0:
+            continue
+        upper = close[i] * (1 + PT_MULT * v)
+        lower = close[i] * (1 - SL_MULT * v)
+        end = min(i + HORIZON, n - 1)
+        ret = close[end] / close[i] - 1
+        for j in range(i + 1, end + 1):
+            if close[j] >= upper:
+                ret = close[j] / close[i] - 1
+                break
+            if close[j] <= lower:
+                ret = close[j] / close[i] - 1
+                break
+        returns[i] = ret
+    return pd.Series(returns, index=df.index)
+
+
+def _dataset(tickers: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
     """Stack features + labels + dates across tickers, dropping warm-up/label-less rows."""
-    X_parts, y_parts, d_parts = [], [], []
+    X_parts, y_parts, d_parts, r_parts = [], [], [], []
     for t in tickers:
         df = db.get_prices(t)
         if df is None or len(df) < 260:
@@ -137,32 +197,41 @@ def _dataset(tickers: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
             continue
         feat = build_features(df)
         lab = triple_barrier_labels(df)
-        ok = feat.notna().all(axis=1) & lab.notna()
+        ret = triple_barrier_returns(df)
+        ok = feat.notna().all(axis=1) & lab.notna() & ret.notna()
         X_parts.append(feat[ok])
         y_parts.append(lab[ok].astype(int))
         d_parts.append(pd.Series(feat.index[ok], index=feat.index[ok]))
+        r_parts.append(ret[ok])
         print(f"  {t}: {int(ok.sum())} labelled samples")
     if not X_parts:
         raise SystemExit("No usable data — fetch prices for these tickers first.")
     X = pd.concat(X_parts)
     y = pd.concat(y_parts)
     dates = pd.concat(d_parts)
+    returns = pd.concat(r_parts)
     order = np.argsort(dates.to_numpy())
-    return X.iloc[order].reset_index(drop=True), y.iloc[order].reset_index(drop=True), dates.iloc[order].reset_index(drop=True)
+    return (X.iloc[order].reset_index(drop=True),
+            y.iloc[order].reset_index(drop=True),
+            dates.iloc[order].reset_index(drop=True),
+            returns.iloc[order].reset_index(drop=True))
 
 
 def _new_model():
     """LightGBM if available, else sklearn's HistGradientBoosting, else None."""
     try:
         from lightgbm import LGBMClassifier
-        return LGBMClassifier(n_estimators=300, learning_rate=0.03, num_leaves=31,
-                              subsample=0.8, colsample_bytree=0.8, class_weight="balanced",
-                              min_child_samples=40, verbose=-1)
+        # Regularised model with shallower tree architecture to avoid overfitting to noise
+        return LGBMClassifier(n_estimators=120, learning_rate=0.015, num_leaves=7,
+                              max_depth=3, subsample=0.7, colsample_bytree=0.7,
+                              class_weight="balanced", min_child_samples=50,
+                              reg_alpha=0.5, reg_lambda=2.0, verbose=-1)
     except Exception:
         try:
             from sklearn.ensemble import HistGradientBoostingClassifier
-            return HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05,
-                                                   max_leaf_nodes=31, l2_regularization=1.0)
+            return HistGradientBoostingClassifier(max_iter=120, learning_rate=0.02,
+                                                   max_leaf_nodes=7, max_depth=3,
+                                                   l2_regularization=5.0)
         except Exception:
             return None
 
@@ -177,36 +246,58 @@ def _sample_weights(y: pd.Series) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 # Walk-forward validation                                                      #
 # --------------------------------------------------------------------------- #
-def walk_forward(X: pd.DataFrame, y: pd.Series, n_folds: int = 5) -> None:
-    """Expanding-window train → next block test, with a HORIZON-day embargo."""
-    fold = len(X) // (n_folds + 1)
+def walk_forward(X: pd.DataFrame, y: pd.Series, dates: pd.Series, returns: pd.Series, n_folds: int = 5) -> None:
+    """Chronological date-based walk-forward split (prevents cross-ticker temporal leakage)."""
+    unique_dates = pd.Series(sorted(dates.unique()))
+    n_days = len(unique_dates)
+    fold_days = n_days // (n_folds + 1)
+    
     print("\nWalk-forward (after %.1f bps cost):" % COST_BPS)
     accs, edges = [], []
+    
     for k in range(1, n_folds + 1):
-        tr_end = fold * k
-        te_start, te_end = tr_end + HORIZON, fold * (k + 1)   # embargo gap
-        if te_start >= te_end:
+        tr_end_idx = fold_days * k
+        te_start_idx = tr_end_idx + HORIZON
+        te_end_idx = fold_days * (k + 1)
+        
+        if te_start_idx >= n_days:
+            break
+            
+        train_cutoff = unique_dates.iloc[tr_end_idx]
+        test_start_date = unique_dates.iloc[te_start_idx]
+        test_end_date = unique_dates.iloc[min(te_end_idx, n_days - 1)]
+        
+        train_mask = dates <= train_cutoff
+        test_mask = (dates >= test_start_date) & (dates <= test_end_date)
+        
+        Xtr, ytr = X[train_mask], y[train_mask]
+        Xte, yte = X[test_mask], y[test_mask]
+        yte_ret = returns[test_mask]
+        
+        if len(Xtr) == 0 or len(Xte) == 0:
             continue
+            
         m = _new_model()
         if m is None:
             print("  no ML backend installed (pip install lightgbm or scikit-learn)")
             return
-        Xtr, ytr = X.iloc[:tr_end], y.iloc[:tr_end]
-        Xte, yte = X.iloc[te_start:te_end], y.iloc[te_start:te_end]
+            
         try:
             m.fit(Xtr, ytr, sample_weight=_sample_weights(ytr))
         except TypeError:
             m.fit(Xtr, ytr)
+            
         pred = m.predict(Xte)
         acc = float((pred == yte.to_numpy()).mean())
-        # Trade the signal: long when Buy, flat otherwise; realised next-bar move
-        # is the label's own forward return proxy (sign), net of cost on entries.
+        
         cost = COST_BPS / 1e4
-        strat = np.where(pred == 1, yte.to_numpy() * 0.01 - cost, 0.0).sum()
-        hold = (yte.to_numpy() * 0.01).sum()
+        strat = np.where(pred == 1, yte_ret.to_numpy() - cost, 0.0).sum()
+        hold = yte_ret.to_numpy().sum()
+        
         accs.append(acc)
         edges.append(strat - hold)
-        print(f"  fold {k}: acc={acc:.3f}  signal_edge_vs_hold={strat - hold:+.4f}")
+        print(f"  fold {k} ({train_cutoff.strftime('%Y-%m-%d')} cutoff): acc={acc:.3f}  signal_edge_vs_hold={strat - hold:+.4f}")
+        
     if accs:
         print(f"  mean acc={np.mean(accs):.3f}  mean edge={np.mean(edges):+.4f}  "
               f"(edge>0 means the signal beat buy-and-hold out-of-sample)")
@@ -214,9 +305,10 @@ def walk_forward(X: pd.DataFrame, y: pd.Series, n_folds: int = 5) -> None:
 
 def train(tickers: list[str]) -> None:
     print(f"Building dataset from {len(tickers)} tickers...")
-    X, y, _ = _dataset(tickers)
+    X, y, dates, returns = _dataset(tickers)
     print(f"Total samples: {len(X)}  class balance: {dict(y.value_counts())}")
-    walk_forward(X, y)
+    
+    walk_forward(X, y, dates, returns)
 
     model = _new_model()
     if model is None:
@@ -225,6 +317,7 @@ def train(tickers: list[str]) -> None:
         model.fit(X, y, sample_weight=_sample_weights(y))
     except TypeError:
         model.fit(X, y)
+        
     with open(MODEL_PATH, "wb") as f:
         pickle.dump({"model": model, "features": FEATURES, "horizon": HORIZON}, f)
     print(f"\nSaved model → {MODEL_PATH}")

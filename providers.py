@@ -11,6 +11,7 @@ Env vars:
     SEC_USER_AGENT    "Your Name your@email.com" — SEC requires a contact UA
 """
 import os
+import re
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -32,11 +33,11 @@ _ADAPTER = HTTPAdapter(max_retries=_RETRY, pool_connections=10, pool_maxsize=10)
 _SESSION.mount("https://", _ADAPTER)
 _SESSION.mount("http://", _ADAPTER)
 
-FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "d5sa9apr01qoo9r3jp9gd5sa9apr01qoo9r3jpa0").strip()
-FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
-SEC_USER_AGENT = os.environ.get(
-    "SEC_USER_AGENT", "ticker-change-dashboard contact@example.com"
-).strip()
+# Built-in shared dev key — used first, so the app works out of the box. When its
+# free-tier quota is exhausted, calls automatically roll over to any user-supplied
+# keys saved on the /settings page (see _finnhub_get / _fmp_get rotation).
+_DEV_FINNHUB_KEY = "d5sa9apr01qoo9r3jp9gd5sa9apr01qoo9r3jpa0"
+_DEFAULT_SEC_UA = "ticker-change-dashboard contact@example.com"
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 FMP_BASE = "https://financialmodelingprep.com/api/v3"
@@ -46,13 +47,109 @@ SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 CACHE_TTL_HOURS = 24
 HTTP_TIMEOUT = 12
 
+# HTTP statuses that mean "this key is exhausted/invalid" — roll over to the next.
+_ROLLOVER_STATUSES = (401, 402, 403, 429)
+
+
+def _split_keys(raw: str) -> list:
+    """Parse a comma/newline/whitespace-separated key blob into a clean list."""
+    return [k.strip() for k in re.split(r"[\s,]+", raw or "") if k.strip()]
+
+
+def _ordered_keys(env_var: str, setting_key: str, dev_default: str = "") -> list:
+    """Build the ordered, de-duplicated key list for a provider.
+
+    Order = env var (or built-in dev default) first, then any user keys saved on
+    the settings page. Trying the shared/default key first preserves the existing
+    behaviour; the user keys act as quota fallbacks behind it.
+    """
+    primary = os.environ.get(env_var, dev_default).strip()
+    user = _split_keys(db.get_setting(setting_key))
+    ordered = ([primary] if primary else []) + user
+    seen, out = set(), []
+    for k in ordered:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
+def finnhub_keys() -> list:
+    """Ordered Finnhub keys: env/dev default first, then user fallbacks."""
+    return _ordered_keys("FINNHUB_API_KEY", "finnhub_api_key", _DEV_FINNHUB_KEY)
+
+
+def fmp_keys() -> list:
+    """Ordered FMP keys: env first, then user fallbacks."""
+    return _ordered_keys("FMP_API_KEY", "fmp_api_key")
+
+
+def active_finnhub_key() -> str:
+    """The first Finnhub key — used by the browser for the live WebSocket feed."""
+    keys = finnhub_keys()
+    return keys[0] if keys else ""
+
+
+def sec_user_agent() -> str:
+    """SEC contact UA: user setting overrides env, which overrides the default."""
+    return (db.get_setting("sec_user_agent")
+            or os.environ.get("SEC_USER_AGENT", _DEFAULT_SEC_UA)).strip()
+
+
+# --------------------------------------------------------------------------- #
+# AI / LLM provider keys (power the AI analyst report — see ai.py)             #
+# --------------------------------------------------------------------------- #
+
+# label, env var, settings key, OpenAI-compatible base URL (None = native SDK),
+# default model. OpenRouter / OpenAI / Gemini all expose an OpenAI-style
+# /chat/completions endpoint, so they share one client path in ai.py; Anthropic
+# uses its own SDK. Order here is also the fallback order for the report.
+AI_PROVIDERS = (
+    {"id": "anthropic",  "label": "Anthropic (Claude)", "env": "ANTHROPIC_API_KEY",
+     "setting": "anthropic_api_key", "base_url": None,
+     "model": "claude-opus-4-8"},
+    {"id": "openai",     "label": "OpenAI",             "env": "OPENAI_API_KEY",
+     "setting": "openai_api_key", "base_url": "https://api.openai.com/v1",
+     "model": "gpt-4o"},
+    {"id": "gemini",     "label": "Google Gemini",      "env": "GEMINI_API_KEY",
+     "setting": "gemini_api_key",
+     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+     "model": "gemini-2.0-flash"},
+    {"id": "openrouter", "label": "OpenRouter",         "env": "OPENROUTER_API_KEY",
+     "setting": "openrouter_api_key", "base_url": "https://openrouter.ai/api/v1",
+     "model": "anthropic/claude-opus-4-8"},
+)
+
+AI_SETTING_KEYS = tuple(p["setting"] for p in AI_PROVIDERS)
+
+
+def ai_key(setting_key: str, env_var: str) -> str:
+    """Resolve one AI provider key: user setting overrides env."""
+    return (db.get_setting(setting_key) or os.environ.get(env_var, "")).strip()
+
+
+def ai_providers() -> list:
+    """Configured AI providers, in fallback order, each with its resolved key."""
+    out = []
+    for p in AI_PROVIDERS:
+        key = ai_key(p["setting"], p["env"])
+        if key:
+            out.append({**p, "key": key})
+    return out
+
 
 def configured() -> dict:
-    """Which providers have usable credentials."""
+    """Which providers have usable credentials, and how many keys back each."""
+    finnhub, fmp = finnhub_keys(), fmp_keys()
+    ai = {p["id"] for p in ai_providers()}
     return {
-        "finnhub": bool(FINNHUB_KEY),
-        "fmp": bool(FMP_KEY),
+        "finnhub": bool(finnhub),
+        "fmp": bool(fmp),
         "sec": True,  # keyless
+        "finnhub_key_count": len(finnhub),
+        "fmp_key_count": len(fmp),
+        "ai": {p["id"]: (p["id"] in ai) for p in AI_PROVIDERS},
+        "ai_count": len(ai),
     }
 
 
@@ -88,20 +185,94 @@ def _first(d: dict, *keys, default=None):
     return default
 
 
+def _finnhub_get(path: str, params: dict):
+    """GET a Finnhub endpoint, rolling over to the next key on quota/auth errors.
+
+    Returns parsed JSON from the first key that succeeds, or None if every key is
+    exhausted/failing. This is what lets a user-supplied key take over once the
+    shared dev key hits its 60 req/min cap.
+    """
+    keys = finnhub_keys()
+    if not keys:
+        return None
+    last = len(keys) - 1
+    for i, key in enumerate(keys):
+        try:
+            resp = _SESSION.get(
+                f"{FINNHUB_BASE}{path}",
+                headers={"X-Finnhub-Token": key},
+                params=params,
+                timeout=HTTP_TIMEOUT,
+            )
+        except requests.RequestException as e:
+            print(f"[providers] finnhub {path} (key {i + 1}/{len(keys)}) failed: {e}")
+            continue
+        if resp.status_code == 200:
+            try:
+                return resp.json()
+            except ValueError:
+                return None
+        if resp.status_code in _ROLLOVER_STATUSES and i < last:
+            print(f"[providers] finnhub key {i + 1}/{len(keys)} -> HTTP "
+                  f"{resp.status_code}, rolling over to next key")
+            continue
+        print(f"[providers] finnhub {path} -> HTTP {resp.status_code}")
+        return None
+    return None
+
+
+def _fmp_get(path: str):
+    """GET an FMP endpoint, rolling over to the next key on quota/auth errors.
+
+    FMP signals an exhausted free tier both via 401/403/429 and via a 200 body of
+    {"Error Message": ...}; both trigger rollover to the next key.
+    """
+    keys = fmp_keys()
+    if not keys:
+        return None
+    last = len(keys) - 1
+    for i, key in enumerate(keys):
+        try:
+            resp = _SESSION.get(
+                f"{FMP_BASE}{path}", params={"apikey": key}, timeout=HTTP_TIMEOUT
+            )
+        except requests.RequestException as e:
+            print(f"[providers] fmp {path} (key {i + 1}/{len(keys)}) failed: {e}")
+            continue
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except ValueError:
+                return None
+            if isinstance(data, dict) and "Error Message" in data:
+                if i < last:
+                    print(f"[providers] fmp key {i + 1}/{len(keys)} quota error, "
+                          f"rolling over to next key")
+                    continue
+                return None
+            return data
+        if resp.status_code in _ROLLOVER_STATUSES and i < last:
+            print(f"[providers] fmp key {i + 1}/{len(keys)} -> HTTP "
+                  f"{resp.status_code}, rolling over to next key")
+            continue
+        print(f"[providers] fmp {path} -> HTTP {resp.status_code}")
+        return None
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Finnhub                                                                      #
 # --------------------------------------------------------------------------- #
 
 def finnhub_metrics(symbol: str):
     """Valuation & profitability metrics. Returns dict of label -> value or None."""
-    if not FINNHUB_KEY:
+    if not finnhub_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FINNHUB_BASE}/stock/metric",
-            headers={"X-Finnhub-Token": FINNHUB_KEY},
-            params={"symbol": symbol.upper(), "metric": "all"},
+        return _finnhub_get(
+            "/stock/metric",
+            {"symbol": symbol.upper(), "metric": "all"},
         )
 
     raw = _cached("finnhub", f"metric:{symbol.upper()}", fetch)
@@ -134,14 +305,13 @@ def finnhub_metrics(symbol: str):
 
 def finnhub_insider_sentiment(symbol: str):
     """Monthly insider sentiment (MSPR). Returns list of {year, month, mspr, change}."""
-    if not FINNHUB_KEY:
+    if not finnhub_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FINNHUB_BASE}/stock/insider-sentiment",
-            headers={"X-Finnhub-Token": FINNHUB_KEY},
-            params={"symbol": symbol.upper(), "from": "2022-01-01", "to": "2030-01-01"},
+        return _finnhub_get(
+            "/stock/insider-sentiment",
+            {"symbol": symbol.upper(), "from": "2022-01-01", "to": "2030-01-01"},
         )
 
     raw = _cached("finnhub", f"insider-sentiment:{symbol.upper()}", fetch)
@@ -160,14 +330,13 @@ def finnhub_insider_sentiment(symbol: str):
 
 def finnhub_insider_transactions(symbol: str, limit: int = 15):
     """Recent insider transactions. Returns list of normalized trade dicts."""
-    if not FINNHUB_KEY:
+    if not finnhub_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FINNHUB_BASE}/stock/insider-transactions",
-            headers={"X-Finnhub-Token": FINNHUB_KEY},
-            params={"symbol": symbol.upper()},
+        return _finnhub_get(
+            "/stock/insider-transactions",
+            {"symbol": symbol.upper()},
         )
 
     raw = _cached("finnhub", f"insider-tx:{symbol.upper()}", fetch)
@@ -190,14 +359,13 @@ def finnhub_insider_transactions(symbol: str, limit: int = 15):
 
 def finnhub_price_target(symbol: str):
     """Consensus analyst price target (low / mean / median / high). Returns dict or None."""
-    if not FINNHUB_KEY:
+    if not finnhub_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FINNHUB_BASE}/stock/price-target",
-            headers={"X-Finnhub-Token": FINNHUB_KEY},
-            params={"symbol": symbol.upper()},
+        return _finnhub_get(
+            "/stock/price-target",
+            {"symbol": symbol.upper()},
         )
 
     raw = _cached("finnhub", f"price-target:{symbol.upper()}", fetch)
@@ -214,14 +382,13 @@ def finnhub_price_target(symbol: str):
 
 def finnhub_recommendations(symbol: str):
     """Latest analyst recommendation breakdown. Returns dict or None."""
-    if not FINNHUB_KEY:
+    if not finnhub_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FINNHUB_BASE}/stock/recommendation",
-            headers={"X-Finnhub-Token": FINNHUB_KEY},
-            params={"symbol": symbol.upper()},
+        return _finnhub_get(
+            "/stock/recommendation",
+            {"symbol": symbol.upper()},
         )
 
     raw = _cached("finnhub", f"reco:{symbol.upper()}", fetch)
@@ -244,14 +411,11 @@ def finnhub_recommendations(symbol: str):
 
 def fmp_institutional_holders(symbol: str, limit: int = 10):
     """Top institutional (13F) holders. Returns list of {holder, shares, change, date}."""
-    if not FMP_KEY:
+    if not fmp_keys():
         return None
 
     def fetch():
-        return _get_json(
-            f"{FMP_BASE}/institutional-holder/{symbol.upper()}",
-            params={"apikey": FMP_KEY},
-        )
+        return _fmp_get(f"/institutional-holder/{symbol.upper()}")
 
     raw = _cached("fmp", f"inst-holders:{symbol.upper()}", fetch)
     if not isinstance(raw, list) or not raw:
@@ -276,7 +440,7 @@ def fmp_institutional_holders(symbol: str, limit: int = 10):
 # --------------------------------------------------------------------------- #
 
 def _sec_headers():
-    return {"User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"}
+    return {"User-Agent": sec_user_agent(), "Accept-Encoding": "gzip, deflate"}
 
 
 def sec_cik_for_ticker(symbol: str):

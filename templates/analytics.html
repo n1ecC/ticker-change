@@ -235,7 +235,7 @@
   <!-- Row 2: Cumulative Return vs Benchmarks (full width) -->
   {% if data.charts.cumulative_return %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Cumulative Return vs. Benchmarks</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Cumulative Return vs. Benchmarks', 'cumulative_return') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Growth of $100 from the earliest common date.
       <span class="text-amber-500 font-mono font-semibold">{{ data.ticker }}</span> vs.
@@ -250,7 +250,7 @@
   <!-- Row 3: VaR & ES (full width) -->
   {% if data.charts.var %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Value-at-Risk &amp; Expected Shortfall</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Value-at-Risk & Expected Shortfall', 'var') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Historical 1-day VaR at 95 % and 99 % confidence using a 252-day rolling window — the daily loss you would not expect to exceed on 95 %/99 % of trading days.
       ES (CVaR) is the <em>average</em> loss when you <em>do</em> breach VaR: a more conservative tail-risk metric.
@@ -261,14 +261,14 @@
 
   <!-- Row 3: Volatility (full width) -->
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Volatility</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Volatility', 'annualised_vol') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">30-day realised volatility annualised (×√252). Spikes indicate elevated uncertainty — useful for sizing positions relative to ATR.</p>
     {{ data.charts.volatility | safe }}
   </div>
 
   <!-- Row 4: Drawdown -->
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Drawdown from Peak</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Drawdown from Peak', 'max_drawdown') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">Maximum drawdown: <span class="text-rose-400 font-mono">{{ data.stats.max_drawdown }}%</span>. Depth and duration of drawdowns reveal how difficult a recovery would be.</p>
     {{ data.charts.drawdown | safe }}
   </div>
@@ -276,7 +276,7 @@
   <!-- Row 5: Forward Estimates Summary -->
   {% if data.forward_estimates %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Forward Price Estimates</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Forward Price Estimates', 'monte_carlo') }}</h2>
     <p class="text-xs text-zinc-400 mb-4">Monte Carlo projection (1,000 paths) across multiple time horizons. Range shows 5th–95th percentile outcomes.</p>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {% for horizon, label, color in [('3m', '3-Month', '#6366f1'), ('6m', '6-Month', '#8b5cf6'), ('1y', '1-Year', '#f59e0b')] %}
@@ -324,7 +324,7 @@
 
     {% if data.charts.volume_profile %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Volume Profile (2 yr)</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Volume Profile (2 yr)', 'poc') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">
         Cumulative volume traded at each price level over the past two years.
         High-volume nodes act as institutional support/resistance.
