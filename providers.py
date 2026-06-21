@@ -32,7 +32,7 @@ _ADAPTER = HTTPAdapter(max_retries=_RETRY, pool_connections=10, pool_maxsize=10)
 _SESSION.mount("https://", _ADAPTER)
 _SESSION.mount("http://", _ADAPTER)
 
-FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "").strip()
+FINNHUB_KEY = os.environ.get("FINNHUB_API_KEY", "REDACTED_FINNHUB_KEY").strip()
 FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
 SEC_USER_AGENT = os.environ.get(
     "SEC_USER_AGENT", "ticker-change-dashboard contact@example.com"
