@@ -2119,17 +2119,17 @@ def momentum_page():
         dd_chart_html = fig_dd.to_html(full_html=False, include_plotlyjs=False)
         
         # Plotly chart: Rolling 12-1 Momentum Score
-        valid_score = roll_score.iloc[252:] * 100
+        valid_score = roll_score.iloc[253:] * 100
         fig_roll = go.Figure()
-        fig_roll.add_trace(go.Scatter(x=df.index[252:].strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
+        fig_roll.add_trace(go.Scatter(x=df.index[253:].strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
         fig_roll.add_hline(
             y=0,
-            line_dash='solid',
+            line_dash='dash',
             line_color='#ef4444',
             line_width=1,
             annotation_text="Zero Threshold (Trend Switch)",
             annotation_position="bottom right",
-            annotation_font_color='#71717a'
+            annotation_font=dict(size=10, color='#71717a')
         )
         
         fig_roll.update_layout(
@@ -2138,11 +2138,10 @@ def momentum_page():
             yaxis_title='Momentum Score (%)',
             template='plotly_white',
             height=280,
-            margin=dict(l=50, r=30, t=60, b=80),
+            margin=dict(l=50, r=30, t=50, b=50),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            showlegend=True,
-            legend=dict(orientation='h', yanchor='top', y=-0.2, xanchor='center', x=0.5),
+            showlegend=False,
             font=dict(family='Inter, sans-serif')
         )
         roll_chart_html = fig_roll.to_html(full_html=False, include_plotlyjs=False)
