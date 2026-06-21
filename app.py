@@ -15,10 +15,18 @@ import threading
 import math
 from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
+import db
 import providers
+import ml
+import ai
+from glossary import GLOSSARY
 
 app = Flask(__name__)
 CORS(app)
+
+# Expose metric definitions to every template so the `metric` tooltip macro and
+# the /glossary page share a single source of truth.
+app.jinja_env.globals['GLOSSARY'] = GLOSSARY
 
 with app.app_context():
     init_db()
@@ -447,6 +455,15 @@ def index():
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+@app.route('/glossary')
+def glossary_page():
+    """Full metric reference, grouped by section (preserving GLOSSARY order)."""
+    sections: dict[str, list] = {}
+    for key, g in GLOSSARY.items():
+        sections.setdefault(g['section'], []).append({**g, 'key': key})
+    return render_template('glossary.html', sections=sections)
 
 @app.route('/api/stock/<ticker>')
 def stock_api(ticker):
@@ -1548,6 +1565,12 @@ def analytics_page():
     # Attach analyst price target
     data['charts']['price_target'] = get_price_target_chart(ticker, data['current_price'])
 
+    # Machine-learning Buy/Hold/Sell signal (None until a model is trained)
+    data['ml'] = ml.predict(ticker)
+
+    # AI analyst report — reads everything above, including the ML signal
+    data['ai_report'] = ai.generate_report(ticker, data)
+
     return render_template('analytics.html', data=data, ticker=ticker)
 
 
@@ -1864,10 +1887,34 @@ def live_page():
 
 @app.route('/api/config')
 def api_config():
+    key = providers.active_finnhub_key()
     return jsonify({
-        "finnhub_key": providers.FINNHUB_KEY,
-        "has_finnhub": bool(providers.FINNHUB_KEY),
+        "finnhub_key": key,
+        "has_finnhub": bool(key),
     })
+
+
+# User-configurable provider keys. Saved server-side (SQLite) so they apply to the
+# backend Finnhub/FMP calls. Stored keys act as quota fallbacks behind the built-in
+# dev key — see providers._ordered_keys / _finnhub_get / _fmp_get.
+SETTINGS_FIELDS = ("finnhub_api_key", "fmp_api_key", "sec_user_agent")
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    saved = False
+    if request.method == 'POST':
+        for field in SETTINGS_FIELDS:
+            db.set_setting(field, request.form.get(field, '').strip())
+        saved = True
+
+    current = {field: db.get_setting(field) for field in SETTINGS_FIELDS}
+    return render_template(
+        'settings.html',
+        current=current,
+        status=providers.configured(),
+        saved=saved,
+    )
 
 
 @app.route('/api/options-greeks/<ticker>')

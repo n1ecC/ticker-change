@@ -2,6 +2,7 @@ docs/
 __pycache__/
 *.pyc
 stocks.db
+model.pkl
 .venv/
 .venv2/
 .env

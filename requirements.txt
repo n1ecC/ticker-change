@@ -8,3 +8,7 @@ flask-cors
 plotly
 requests
 python-dotenv
+anthropic
+markdown
+scikit-learn
+lightgbm
