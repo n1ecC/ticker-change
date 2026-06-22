@@ -2238,16 +2238,21 @@ def momentum_page():
                 error=f"Ticker '{symbol}' is not currently cached in the database. Please search for it on the homepage first to download its history."
             )
 
+        # Retrieve custom strategy parameters
+        lookback_days = int(request.args.get('lookback_days', '252'))
+        exclude_days = int(request.args.get('exclude_days', '21'))
+        cost_bps_val = float(request.args.get('cost_bps', '7.5'))
+
         # Load ticker price data
         df = db.get_prices(symbol)
-        if df is None or len(df) < 273:  # 252 + 21
+        if df is None or len(df) < lookback_days + exclude_days + 2:
             return render_template(
                 'momentum.html',
                 data=None,
                 tab='ticker',
                 available_symbols=available_symbols,
                 searched_symbol=symbol,
-                error=f"Ticker '{symbol}' has insufficient price history (need at least 273 trading days)."
+                error=f"Ticker '{symbol}' has insufficient price history (need at least {lookback_days + exclude_days + 2} trading days)."
             )
 
         close = df['close']
@@ -2257,31 +2262,36 @@ def momentum_page():
         latest_price = float(close.iloc[-1])
         
         # Compute scores at various horizons
-        # 12-1 momentum: 252 days ago to 21 days ago
         p_latest = close.iloc[-1]
+        idx_excl = exclude_days + 1
+        idx_lookback = lookback_days + 1
+        
+        p_excl = close.iloc[-idx_excl] if len(close) >= idx_excl else close.iloc[0]
+        p_lookback = close.iloc[-idx_lookback] if len(close) >= idx_lookback else close.iloc[0]
+        
         p_21 = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
         p_63 = close.iloc[-64] if len(close) >= 64 else close.iloc[0]
         p_126 = close.iloc[-127] if len(close) >= 127 else close.iloc[0]
         p_252 = close.iloc[-253] if len(close) >= 253 else close.iloc[0]
         
-        mom_12_1 = (p_21 - p_252) / p_252 if p_252 > 0 else 0.0
+        mom_12_1 = (p_excl - p_lookback) / p_lookback if p_lookback > 0 else 0.0
         mom_6m = (p_latest - p_126) / p_126 if p_126 > 0 else 0.0
         mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
         mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
 
         # Volatility-scaled (risk-adjusted) momentum: 12-1 return per unit of
-        # annualised volatility over the same window. Comparable across names.
-        vol_window = daily_rets.iloc[-252:].std() * np.sqrt(252)
+        # annualised volatility over the lookback window.
+        vol_window = daily_rets.iloc[-lookback_days:].std() * np.sqrt(252)
         ann_vol_1y = float(vol_window) if pd.notna(vol_window) and vol_window > 0 else 0.0
         risk_adj_mom = round(mom_12_1 / ann_vol_1y, 2) if ann_vol_1y > 0 else 0.0
 
-        # Calculate rank in universe
+        # Calculate rank in universe using the same custom lookback/exclude parameters
         universe_scores = {}
         for s in symbols:
             s_df = db.get_prices(s)
-            if s_df is not None and len(s_df) >= 253:
-                p_past_s = s_df['close'].iloc[-253]
-                p_recent_s = s_df['close'].iloc[-22]
+            if s_df is not None and len(s_df) >= idx_lookback:
+                p_past_s = s_df['close'].iloc[-idx_lookback]
+                p_recent_s = s_df['close'].iloc[-idx_excl]
                 if p_past_s > 0:
                     universe_scores[s] = (p_recent_s - p_past_s) / p_past_s
         sorted_univ = sorted(universe_scores.items(), key=lambda x: x[1], reverse=True)
@@ -2289,21 +2299,21 @@ def momentum_page():
         rank = univ_ranks.get(symbol, len(symbols))
 
         # Time-Series Momentum Backtest
-        # Signal: Long if 12-1 momentum is positive, cash (0) otherwise
-        # Rolling 12-1 momentum score at each day:
-        roll_score = close.shift(21) / close.shift(252) - 1
+        # Signal: Long if momentum is positive, cash (0) otherwise
+        roll_score = close.shift(exclude_days) / close.shift(lookback_days) - 1
         signal = np.where(roll_score > 0, 1.0, 0.0)
         signal = pd.Series(signal, index=df.index).shift(1).fillna(0.0)
         
         trades = signal.diff().abs().fillna(0.0)
-        cost_bps = COST_BPS / 1e4
+        cost_bps = cost_bps_val / 1e4
         strat_rets = signal * daily_rets - trades * cost_bps
         
-        # Start backtest from index 253
-        backtest_dates = df.index[253:]
-        strat_series = strat_rets.iloc[253:]
-        hold_series = daily_rets.iloc[253:]
-        trade_signals = signal.iloc[253:]
+        # Start backtest from index lookback_days + 1
+        start_idx = lookback_days + 1
+        backtest_dates = df.index[start_idx:]
+        strat_series = strat_rets.iloc[start_idx:]
+        hold_series = daily_rets.iloc[start_idx:]
+        trade_signals = signal.iloc[start_idx:]
         
         # Apply timeframe filter if requested
         if period != 'all':
@@ -2338,7 +2348,7 @@ def momentum_page():
         cum_hold = (1 + hold_series).cumprod() * 10000
 
         # Full-length Buy & Hold: spans the entire available ticker history
-        # (the strategy needs 252 days of warm-up, but Buy & Hold can start from day 1)
+        # (the strategy needs lookback_days days of warm-up, but Buy & Hold can start from day 1)
         hold_full_dates = df.index
         hold_full_rets = daily_rets.fillna(0.0)
         if period != 'all':
@@ -2371,21 +2381,52 @@ def momentum_page():
         
         for idx in range(len(trade_signals)):
             sig = trade_signals.iloc[idx]
+            date_today = backtest_dates[idx]
             if sig == 1 and not in_trade:
                 in_trade = True
                 entry_idx = idx
             elif sig == 0 and in_trade:
                 in_trade = False
-                ret_val = close.iloc[backtest_start_idx + idx] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps * 2
-                trade_records.append(ret_val)
+                entry_date = backtest_dates[entry_idx]
+                exit_date = date_today
+                p_entry = float(close.iloc[backtest_start_idx + entry_idx])
+                p_exit = float(close.iloc[backtest_start_idx + idx])
+                raw_ret = p_exit / p_entry - 1
+                net_ret = raw_ret - cost_bps * 2
+                hold_days = (exit_date - entry_date).days
+                trade_records.append({
+                    "entry_date": entry_date.strftime('%Y-%m-%d'),
+                    "entry_price": round(p_entry, 2),
+                    "exit_date": exit_date.strftime('%Y-%m-%d'),
+                    "exit_price": round(p_exit, 2),
+                    "hold_days": hold_days,
+                    "raw_return": round(raw_ret * 100, 2),
+                    "net_return": round(net_ret * 100, 2),
+                    "is_win": net_ret > 0
+                })
                 
         if in_trade:
-            ret_val = close.iloc[-1] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps
-            trade_records.append(ret_val)
+            entry_date = backtest_dates[entry_idx]
+            exit_date = backtest_dates[-1]
+            p_entry = float(close.iloc[backtest_start_idx + entry_idx])
+            p_exit = float(close.iloc[-1])
+            raw_ret = p_exit / p_entry - 1
+            net_ret = raw_ret - cost_bps
+            hold_days = (exit_date - entry_date).days
+            trade_records.append({
+                "entry_date": entry_date.strftime('%Y-%m-%d'),
+                "entry_price": round(p_entry, 2),
+                "exit_date": exit_date.strftime('%Y-%m-%d') + " (Active)",
+                "exit_price": round(p_exit, 2),
+                "hold_days": hold_days,
+                "raw_return": round(raw_ret * 100, 2),
+                "net_return": round(net_ret * 100, 2),
+                "is_win": net_ret > 0
+            })
             
         trade_count = len(trade_records)
-        wins = [r for r in trade_records if r > 0]
-        losses = [r for r in trade_records if r <= 0]
+        wins = [r["net_return"] for r in trade_records if r["net_return"] > 0]
+        losses = [r["net_return"] for r in trade_records if r["net_return"] <= 0]
         
         win_rate = round(len(wins) / trade_count * 100, 1) if trade_count > 0 else 0.0
         profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
@@ -2454,9 +2495,9 @@ def momentum_page():
         )
         dd_chart_html = fig_dd.to_html(full_html=False, include_plotlyjs=False)
         
-        # Plotly chart: Rolling 12-1 Momentum Score
-        valid_score = roll_score.iloc[253:] * 100
-        roll_dates = df.index[253:]
+        # Plotly chart: Rolling Momentum Score
+        valid_score = roll_score.iloc[start_idx:] * 100
+        roll_dates = df.index[start_idx:]
         if period != 'all':
             mask_roll = roll_dates >= start_cutoff
             if mask_roll.any():
@@ -2464,7 +2505,7 @@ def momentum_page():
                 valid_score = valid_score[mask_roll]
         
         fig_roll = go.Figure()
-        fig_roll.add_trace(go.Scatter(x=roll_dates.strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
+        fig_roll.add_trace(go.Scatter(x=roll_dates.strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='Momentum %', line=dict(color='#818cf8', width=1.5)))
         fig_roll.add_hline(
             y=0,
             line_dash='dash',
@@ -2476,7 +2517,7 @@ def momentum_page():
         )
         
         fig_roll.update_layout(
-            title=f'Rolling 12-1 Momentum Score (%) for {symbol}',
+            title=f'Rolling Momentum Score (%) for {symbol}',
             xaxis_title='Date',
             yaxis_title='Momentum Score (%)',
             template='plotly_white',
@@ -2513,11 +2554,13 @@ def momentum_page():
             "trade_count": trade_count,
             "win_rate": win_rate,
             "profit_factor": profit_factor,
-            "risk_adj_mom": risk_adj_mom,
-            "ann_vol_1y": round(ann_vol_1y * 100, 1),
             "pct_invested": pct_invested,
-            "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
-            "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+            "ann_vol_1y": round(ann_vol_1y * 100, 1),
+            "risk_adj_mom": risk_adj_mom,
+            "lookback_days": lookback_days,
+            "exclude_days": exclude_days,
+            "cost_bps": cost_bps_val,
+            "trades": trade_records
         }
 
         return render_template(
@@ -2538,6 +2581,8 @@ def momentum_page():
         trend_filter = request.args.get('trend', 'bullish')
         universe_seeded = request.args.get('universe_seeded', '')
         success_count = request.args.get('success_count', '0')
+        lookback_days = int(request.args.get('lookback_days', '252'))
+        exclude_days = int(request.args.get('exclude_days', '21'))
 
         # Load close prices for all symbols in database
         prices = {}
@@ -2558,24 +2603,21 @@ def momentum_page():
             )
 
         price_df = pd.DataFrame(prices)
-        if len(price_df) < 273:
+        if len(price_df) < lookback_days + exclude_days + 2:
             return render_template(
                 'momentum.html',
                 data=None,
                 tab='screener',
-                error="Insufficient price history in database to run screener.",
+                error=f"Insufficient price history in database to run screener (need at least {lookback_days + exclude_days + 2} daily bars).",
                 available_symbols=available_symbols,
                 searched_symbol='',
                 period=period
             )
 
         daily_rets = price_df.pct_change()
-        momentum_lookback = 252
-        exclude_days = 21
-
         latest_idx = len(price_df) - 1
         recent_idx = latest_idx - exclude_days
-        past_idx = latest_idx - momentum_lookback
+        past_idx = latest_idx - lookback_days
 
         screened_results = []
         for t in symbols:
@@ -2585,7 +2627,7 @@ def momentum_page():
                 p_latest = price_df[t].iloc[-1]
                 if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
                     score = (p_recent - p_past) / p_past
-                    v = daily_rets[t].iloc[-momentum_lookback:].std() * np.sqrt(252)
+                    v = daily_rets[t].iloc[-lookback_days:].std() * np.sqrt(252)
                     vol = float(v) if pd.notna(v) and v > 0 else 0.0
                     risk_adj = score / vol if vol > 0 else 0.0
 
@@ -2629,7 +2671,9 @@ def momentum_page():
             "trend_filter": trend_filter,
             "total_screened": len(screened_results),
             "universe_seeded": universe_seeded == 'true',
-            "success_count": success_count
+            "success_count": success_count,
+            "lookback_days": lookback_days,
+            "exclude_days": exclude_days
         }
 
         return render_template(
@@ -2644,7 +2688,14 @@ def momentum_page():
         )
 
     # ELSE: Tab == 'universe'
-    # 2. Load close prices for these symbols
+    # Retrieve custom strategy parameters
+    lookback_days = int(request.args.get('lookback_days', '252'))
+    exclude_days = int(request.args.get('exclude_days', '21'))
+    top_n = int(request.args.get('top_n', '5'))
+    rank_by = request.args.get('rank_by', 'raw')
+    cost_bps_val = float(request.args.get('cost_bps', '7.5'))
+
+    # Load close prices for these symbols
     prices = {}
     for t in symbols + ["SPY", "QQQ"]:
         df = db.get_prices(t)
@@ -2656,12 +2707,8 @@ def momentum_page():
 
     price_df = pd.DataFrame(prices)
     
-    # 3. Calculate 12-1 momentum scores for active tickers
-    momentum_lookback = 252
-    exclude_days = 21
-    
-    if len(price_df) < momentum_lookback + 2:
-        return render_template('momentum.html', data=None, error=f"Insufficient history in database. Need at least {momentum_lookback} daily bars.")
+    if len(price_df) < lookback_days + exclude_days + 2:
+        return render_template('momentum.html', data=None, error=f"Insufficient history in database. Need at least {lookback_days + exclude_days + 2} daily bars.")
         
     daily_rets = price_df.pct_change()
 
@@ -2669,19 +2716,27 @@ def momentum_page():
     vols = {}
     latest_idx = len(price_df) - 1
     recent_idx = latest_idx - exclude_days
-    past_idx = latest_idx - momentum_lookback
+    past_idx = latest_idx - lookback_days
 
     for t in symbols:
         if t in price_df.columns:
             p_past = price_df[t].iloc[past_idx]
             p_recent = price_df[t].iloc[recent_idx]
             if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
-                scores[t] = (p_recent - p_past) / p_past
-                v = daily_rets[t].iloc[-momentum_lookback:].std() * np.sqrt(252)
+                raw_score = (p_recent - p_past) / p_past
+                scores[t] = raw_score
+                v = daily_rets[t].iloc[-lookback_days:].std() * np.sqrt(252)
                 vols[t] = float(v) if pd.notna(v) and v > 0 else 0.0
 
-    # Sort symbols by momentum score
-    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    # Sort symbols by chosen metric
+    def get_sort_key(item):
+        symbol, raw_score = item
+        if rank_by == 'risk_adj':
+            vol = vols.get(symbol, 0.0)
+            return raw_score / vol if vol > 0 else 0.0
+        return raw_score
+
+    sorted_scores = sorted(scores.items(), key=get_sort_key, reverse=True)
     leaderboard = [{
         "symbol": t,
         "score": round(score * 100, 2),
@@ -2690,11 +2745,11 @@ def momentum_page():
         "rank": idx + 1,
     } for idx, (t, score) in enumerate(sorted_scores)]
 
-    top_5 = [t for t, _ in sorted_scores[:5]]
+    top_portfolio_symbols = [t for t, _ in sorted_scores[:top_n]]
     
-    # 4. Backtest Momentum Strategy rebalanced monthly (equal-weight top 5)
+    # 4. Backtest Momentum Strategy rebalanced monthly (equal-weight top N)
     rebalance_freq = 21
-    start_idx = momentum_lookback + 1
+    start_idx = lookback_days + 1
 
     portfolio_returns = []
     active_portfolio = []
@@ -2702,33 +2757,72 @@ def momentum_page():
     total_turnover = 0.0
     rebalance_count = 0
     backtest_dates = price_df.index[start_idx:]
+    
+    rebalance_log = []
+    rebalance_price_at_entry = {}
 
     for i in range(start_idx, len(price_df)):
         is_rebalance = (i - start_idx) % rebalance_freq == 0
+        date_today = price_df.index[i]
         cost_today = 0.0
+        
         if is_rebalance:
+            # Calculate returns of previous period before rebalancing
+            if rebalance_log and active_portfolio:
+                prev_log = rebalance_log[-1]
+                rets_since_last = []
+                for t in active_portfolio:
+                    p_entry = rebalance_price_at_entry.get(t, 0.0)
+                    p_exit = float(price_df[t].iloc[i]) if t in price_df.columns else 0.0
+                    if p_entry > 0:
+                        rets_since_last.append(p_exit / p_entry - 1)
+                period_ret = np.mean(rets_since_last) if rets_since_last else 0.0
+                prev_log["period_return"] = round(period_ret * 100, 2)
+                prev_log["exit_date"] = date_today.strftime('%Y-%m-%d')
+            
             step_scores = {}
             for t in symbols:
                 if t in price_df.columns:
-                    p_past = price_df[t].iloc[i - momentum_lookback]
+                    p_past = price_df[t].iloc[i - lookback_days]
                     p_recent = price_df[t].iloc[i - exclude_days]
                     if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
-                        step_scores[t] = (p_recent - p_past) / p_past
+                        raw_score = (p_recent - p_past) / p_past
+                        if rank_by == 'risk_adj':
+                            v = daily_rets[t].iloc[i - lookback_days:i].std() * np.sqrt(252)
+                            vol = float(v) if pd.notna(v) and v > 0 else 0.0
+                            step_scores[t] = raw_score / vol if vol > 0 else 0.0
+                        else:
+                            step_scores[t] = raw_score
+                            
             sorted_step = sorted(step_scores.items(), key=lambda x: x[1], reverse=True)
-            active_portfolio = [t for t, score in sorted_step[:5] if np.isfinite(score)]
+            active_portfolio = [t for t, score in sorted_step[:top_n] if np.isfinite(score)]
 
-            # Transaction cost scaled by actual turnover (sum of absolute weight
-            # changes), not a flat charge that assumes the book turns over fully.
+            # Transaction cost scaled by actual turnover
             new_weights = {t: 1.0 / len(active_portfolio) for t in active_portfolio} if active_portfolio else {}
             names = set(new_weights) | set(prev_weights)
             turnover = sum(abs(new_weights.get(t, 0.0) - prev_weights.get(t, 0.0)) for t in names)
             if i > start_idx:
-                # One-way turnover = half the gross weight change; round-trip cost
-                # is charged on the notional traded.
-                cost_today = (turnover / 2.0) * (COST_BPS / 1e4)
+                cost_today = (turnover / 2.0) * (cost_bps_val / 1e4)
                 total_turnover += turnover / 2.0
                 rebalance_count += 1
             prev_weights = new_weights
+            
+            rebalance_price_at_entry = {t: float(price_df[t].iloc[i]) for t in active_portfolio if t in price_df.columns}
+            
+            prev_portfolio = rebalance_log[-1]["portfolio"] if rebalance_log else []
+            bought = [t for t in active_portfolio if t not in prev_portfolio]
+            sold = [t for t in prev_portfolio if t not in active_portfolio]
+            
+            rebalance_log.append({
+                "entry_date": date_today.strftime('%Y-%m-%d'),
+                "exit_date": "",
+                "portfolio": list(active_portfolio),
+                "bought": bought,
+                "sold": sold,
+                "turnover": round((turnover / 2.0) * 100, 1),
+                "cost_paid": round(cost_today * 100, 3),
+                "period_return": 0.0
+            })
 
         if active_portfolio:
             daily_ret = daily_rets[active_portfolio].iloc[i].mean()
@@ -2737,6 +2831,19 @@ def momentum_page():
 
         daily_ret -= cost_today
         portfolio_returns.append(daily_ret)
+
+    # Close the last period return
+    if rebalance_log and active_portfolio:
+        last_log = rebalance_log[-1]
+        rets_since_last = []
+        for t in active_portfolio:
+            p_entry = rebalance_price_at_entry.get(t, 0.0)
+            p_exit = float(price_df[t].iloc[-1]) if t in price_df.columns else 0.0
+            if p_entry > 0:
+                rets_since_last.append(p_exit / p_entry - 1)
+        period_ret = np.mean(rets_since_last) if rets_since_last else 0.0
+        last_log["period_return"] = round(period_ret * 100, 2)
+        last_log["exit_date"] = price_df.index[-1].strftime('%Y-%m-%d')
 
     strat_series = pd.Series(portfolio_returns, index=backtest_dates)
     spy_series = daily_rets["SPY"].loc[backtest_dates] if "SPY" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
@@ -2764,10 +2871,10 @@ def momentum_page():
                 spy_series = spy_series[mask]
             if "QQQ" in daily_rets.columns:
                 qqq_series = qqq_series[mask]
+                
+        # Filter the rebalance log too!
+        rebalance_log = [log for log in rebalance_log if log["entry_date"] >= start_cutoff.strftime('%Y-%m-%d')]
     
-    # Compute stats (geometric CAGR + standard Sharpe/Sortino) and the
-    # benchmark-relative alpha/beta/information ratio that actually tell you
-    # whether the strategy added value versus just owning the index.
     strat_stats = _perf_stats(strat_series)
     spy_stats = _perf_stats(spy_series)
     qqq_stats = _perf_stats(qqq_series)
@@ -2782,14 +2889,14 @@ def momentum_page():
     backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='12-1 Momentum Strategy (Top 5)', line=dict(color='#fbbf24', width=2)))
+    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name=f'Strategy (Top {top_n})', line=dict(color='#fbbf24', width=2)))
     if "SPY" in daily_rets.columns:
         fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_spy.tolist(), mode='lines', name='SPY (S&P 500) Benchmark', line=dict(color='#64748b', width=1.5, dash='dash')))
     if "QQQ" in daily_rets.columns:
         fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_qqq.tolist(), mode='lines', name='QQQ (Nasdaq 100) Benchmark', line=dict(color='#818cf8', width=1.5, dash='dash')))
         
     fig.update_layout(
-        title='Growth of $10,000 Investment',
+        title=f'Growth of $10,000 Investment (Rebalanced Top {top_n})',
         xaxis_title='Date',
         yaxis_title='Portfolio Value ($)',
         template='plotly_white',
@@ -2806,7 +2913,7 @@ def momentum_page():
     # Average annual one-way turnover (rebalances are monthly => ~12.6/yr).
     avg_turnover = round((total_turnover / rebalance_count) * (252.0 / rebalance_freq) * 100, 0) if rebalance_count else 0.0
 
-    # Data-driven verdict — describe what actually happened, don't assert a win.
+    # Data-driven verdict
     excess_spy = round(strat_stats["total_return"] - spy_stats["total_return"], 1)
     beat_spy = strat_stats["total_return"] > spy_stats["total_return"]
     beat_qqq = strat_stats["total_return"] > qqq_stats["total_return"]
@@ -2819,7 +2926,7 @@ def momentum_page():
 
     data = {
         "leaderboard": leaderboard,
-        "top_5": top_5,
+        "top_5": top_portfolio_symbols,
         "strat_stats": strat_stats,
         "spy_stats": spy_stats,
         "qqq_stats": qqq_stats,
@@ -2830,7 +2937,13 @@ def momentum_page():
         "rf_annual": round(RF_ANNUAL * 100, 1),
         "chart_html": chart_html,
         "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
-        "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+        "end_date": backtest_dates[-1].strftime('%Y-%m-%d'),
+        "lookback_days": lookback_days,
+        "exclude_days": exclude_days,
+        "top_n": top_n,
+        "rank_by": rank_by,
+        "cost_bps": cost_bps_val,
+        "rebalance_log": rebalance_log
     }
 
     return render_template(
