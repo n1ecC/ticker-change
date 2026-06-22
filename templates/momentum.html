@@ -47,6 +47,30 @@
 
   <!-- Tab Content: Universe Dashboard -->
   {% if tab == 'universe' %}
+  <!-- Timeframe Filter Control -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+    <div class="space-y-0.5">
+      <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Backtest Horizon</h3>
+      <p class="text-[11px] text-zinc-400">Select lookback period for the historical portfolio growth simulation and benchmarks</p>
+    </div>
+    <form action="/momentum" method="GET" class="flex items-center gap-2">
+      <input type="hidden" name="tab" value="universe">
+      <label for="universe-period-select" class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Time Period:</label>
+      <select 
+        id="universe-period-select" 
+        name="period" 
+        onchange="this.form.submit()" 
+        class="text-xs font-semibold bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1.5 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500"
+      >
+        <option value="all" {% if period == 'all' or not period %}selected{% endif %}>All History (5 Years)</option>
+        <option value="3y" {% if period == '3y' %}selected{% endif %}>Last 3 Years</option>
+        <option value="1y" {% if period == '1y' %}selected{% endif %}>Last 1 Year</option>
+        <option value="6m" {% if period == '6m' %}selected{% endif %}>Last 6 Months</option>
+        <option value="3m" {% if period == '3m' %}selected{% endif %}>Last 3 Months</option>
+      </select>
+    </form>
+  </div>
+
   <!-- Stats Grid -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     <!-- Strategy Card -->
@@ -220,7 +244,7 @@
       <p class="text-xs text-zinc-400">Evaluate a specific ticker's trend strength and historical trend-following backtest net returns.</p>
     </div>
     
-    <form action="/momentum" method="GET" class="flex gap-2 max-w-sm w-full">
+    <form action="/momentum" method="GET" class="flex flex-col sm:flex-row gap-2 max-w-xl w-full">
       <input type="hidden" name="tab" value="ticker">
       <div class="relative flex-grow">
         <input 
@@ -239,7 +263,19 @@
           {% endfor %}
         </datalist>
       </div>
-      <button type="submit" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white dark:text-zinc-950 font-bold text-sm transition-colors duration-200">
+      
+      <select 
+        name="period" 
+        class="px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-amber-500"
+      >
+        <option value="all" {% if period == 'all' or not period %}selected{% endif %}>All History (5Y)</option>
+        <option value="3y" {% if period == '3y' %}selected{% endif %}>Last 3 Years</option>
+        <option value="1y" {% if period == '1y' %}selected{% endif %}>Last 1 Year</option>
+        <option value="6m" {% if period == '6m' %}selected{% endif %}>Last 6 Months</option>
+        <option value="3m" {% if period == '3m' %}selected{% endif %}>Last 3 Months</option>
+      </select>
+
+      <button type="submit" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white dark:text-zinc-950 font-bold text-sm transition-colors duration-200 shrink-0">
         Scan Ticker
       </button>
     </form>
