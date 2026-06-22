@@ -803,69 +803,163 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
             'side':   'Call' if abs(c) >= abs(p) else 'Put',
         } for k, n, c, p in ranked[:5]]
 
+        # --- Key levels & their magnitudes -----------------------------------
+        # The handful of strikes a desk actually trades off: the call wall
+        # (largest + gamma above spot → resistance), the put wall (largest −
+        # gamma below spot → support), and the absolute gamma magnet (HVL — the
+        # single strike carrying the most |γ|, the strongest pin / hedge wall).
+        net_by_strike = dict(zip(strikes, net_gex))
+        call_by_strike = dict(zip(strikes, call_gex))
+        put_by_strike = dict(zip(strikes, put_gex))
+
+        def _mag(level, table):
+            return round(float(table.get(level, 0.0)), 1) if level is not None else None
+
+        call_wall_val = _mag(call_wall, call_by_strike)
+        put_wall_val = _mag(put_wall, put_by_strike)
+        hvl = max(strikes, key=lambda k: abs(net_by_strike[k])) if strikes else None
+        hvl_val = _mag(hvl, net_by_strike)
+
+        # Strikes to visually emphasise (outline + on-bar magnitude label).
+        emph = {s for s in (call_wall, put_wall, hvl) if s is not None}
+        EMPH_W = 2.2
+
+        def _outline(seq, levels):
+            return [EMPH_W if k in levels else 0 for k in seq]
+
+        def _labels(seq, table, levels):
+            # Compact $M magnitude printed only on the emphasised bars.
+            return [f"{table[k]:+.0f}" if k in levels else "" for k in seq]
+
+        # Map the precise levels onto their $5 bins for the binned views.
+        def _to_bin(level):
+            return round(level / 5.0) * 5 if level is not None else None
+        cw_b, pw_b, hvl_b = _to_bin(call_wall), _to_bin(put_wall), _to_bin(hvl)
+        emph_b = {s for s in (cw_b, pw_b, hvl_b) if s is not None}
+        bin_net_by_strike = dict(zip(bin_strikes, bin_net))
+        bin_call_by_strike = dict(zip(bin_strikes, bin_call))
+        bin_put_by_strike = dict(zip(bin_strikes, bin_put))
+
         # Symmetric, locked axes so bar proportions reflect real positioning
         # shifts rather than Plotly auto-scaling one side independently.
         bar_max = max([abs(v) for v in call_gex + put_gex + net_gex
-                       + bin_call + bin_put + bin_net] or [1.0]) * 1.08
+                       + bin_call + bin_put + bin_net] or [1.0]) * 1.12
         cum_max = max([abs(v) for v in cum + bin_cum] or [1.0]) * 1.08
         net_color     = ['#10b981' if v >= 0 else '#f43f5e' for v in net_gex]
         bin_net_color = ['#10b981' if v >= 0 else '#f43f5e' for v in bin_net]
+        EMERALD_LINE, ROSE_LINE = '#047857', '#9f1239'
 
         fig = go.Figure()
+
+        # Regime shading: above the zero-gamma flip dealers are net-long gamma
+        # (vol-dampening, mean-reverting → faint green); below it net-short
+        # (vol-expanding, trend-amplifying → faint red). The single biggest
+        # "is price above or below the trigger" read, shown as a backdrop.
+        y_lo, y_hi = min(strikes), max(strikes)
+        pad_y = (y_hi - y_lo) * 0.02 or 1
+        if gamma_flip is not None and y_lo < gamma_flip < y_hi:
+            fig.add_hrect(y0=gamma_flip, y1=y_hi + pad_y, fillcolor='rgba(16,185,129,0.07)',
+                          line_width=0, layer='below')
+            fig.add_hrect(y0=y_lo - pad_y, y1=gamma_flip, fillcolor='rgba(244,63,94,0.07)',
+                          line_width=0, layer='below')
+
         # Trace order is load-bearing — the toggle buttons index into it below.
         # 0 call·raw  1 put·raw  2 net·raw  3 cum·raw
         fig.add_trace(go.Bar(y=strikes, x=call_gex, orientation='h', name='Call GEX',
-                             marker_color='#10b981', marker_line_width=0, visible=True))
+                             marker_color='#10b981',
+                             marker_line=dict(color=EMERALD_LINE, width=_outline(strikes, emph)),
+                             hovertemplate='Strike $%{y}<br>Call γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
         fig.add_trace(go.Bar(y=strikes, x=put_gex, orientation='h', name='Put GEX',
-                             marker_color='#f43f5e', marker_line_width=0, visible=True))
+                             marker_color='#f43f5e',
+                             marker_line=dict(color=ROSE_LINE, width=_outline(strikes, emph)),
+                             hovertemplate='Strike $%{y}<br>Put γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
         fig.add_trace(go.Bar(y=strikes, x=net_gex, orientation='h', name='Net GEX',
-                             marker_color=net_color, marker_line_width=0, visible=False))
-        fig.add_trace(go.Scatter(y=strikes, x=cum, mode='lines', name='Cumulative',
+                             marker_color=net_color,
+                             marker_line=dict(color='rgba(24,24,27,0.55)', width=_outline(strikes, emph)),
+                             text=_labels(strikes, net_by_strike, emph),
+                             textposition='outside', textfont=dict(size=9),
+                             cliponaxis=False,
+                             hovertemplate='Strike $%{y}<br>Net γ %{x:.1f} $M<extra></extra>',
+                             visible=True))
+        fig.add_trace(go.Scatter(y=strikes, x=cum, mode='lines', name='Cumulative net γ',
                              xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             hovertemplate='Strike $%{y}<br>Cumulative %{x:.1f} $M<extra></extra>',
                              visible=True))
         # 4 call·$5  5 put·$5  6 net·$5  7 cum·$5
         fig.add_trace(go.Bar(y=bin_strikes, x=bin_call, orientation='h', name='Call GEX',
-                             marker_color='#10b981', marker_line_width=0, visible=False))
+                             marker_color='#10b981',
+                             marker_line=dict(color=EMERALD_LINE, width=_outline(bin_strikes, emph_b)),
+                             hovertemplate='Strike ~$%{y}<br>Call γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
         fig.add_trace(go.Bar(y=bin_strikes, x=bin_put, orientation='h', name='Put GEX',
-                             marker_color='#f43f5e', marker_line_width=0, visible=False))
+                             marker_color='#f43f5e',
+                             marker_line=dict(color=ROSE_LINE, width=_outline(bin_strikes, emph_b)),
+                             hovertemplate='Strike ~$%{y}<br>Put γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
         fig.add_trace(go.Bar(y=bin_strikes, x=bin_net, orientation='h', name='Net GEX',
-                             marker_color=bin_net_color, marker_line_width=0, visible=False))
-        fig.add_trace(go.Scatter(y=bin_strikes, x=bin_cum, mode='lines', name='Cumulative',
+                             marker_color=bin_net_color,
+                             marker_line=dict(color='rgba(24,24,27,0.55)', width=_outline(bin_strikes, emph_b)),
+                             text=_labels(bin_strikes, bin_net_by_strike, emph_b),
+                             textposition='outside', textfont=dict(size=9),
+                             cliponaxis=False,
+                             hovertemplate='Strike ~$%{y}<br>Net γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Scatter(y=bin_strikes, x=bin_cum, mode='lines', name='Cumulative net γ',
                              xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             hovertemplate='Strike ~$%{y}<br>Cumulative %{x:.1f} $M<extra></extra>',
                              visible=False))
 
-        fig.add_hline(y=current_price, line_dash='solid', line_color='#f59e0b',
-                      line_width=1.5, annotation_text=f'Spot ${current_price:.2f}',
-                      annotation_position='top right')
-        if gamma_flip:
-            fig.add_hline(y=gamma_flip, line_dash='dash', line_color='#6366f1',
-                          line_width=1, annotation_text=f'γ-flip ${gamma_flip}',
-                          annotation_position='bottom right')
+        # --- Labeled key levels (the lines a trader reads off) ----------------
+        # Spread the annotations to opposite corners so they don't collide.
+        fig.add_hline(y=current_price, line_color='#f59e0b', line_width=2,
+                      annotation_text=f'Spot ${current_price:.2f}',
+                      annotation_position='top right',
+                      annotation_font=dict(color='#f59e0b', size=11))
+        if gamma_flip is not None:
+            fig.add_hline(y=gamma_flip, line_color='#7c3aed', line_width=1.8, line_dash='dash',
+                          annotation_text=f'Zero-Gamma ${gamma_flip:g}',
+                          annotation_position='bottom right',
+                          annotation_font=dict(color='#7c3aed', size=10))
+        if call_wall is not None:
+            fig.add_hline(y=call_wall, line_color='#10b981', line_width=1.4, line_dash='dot',
+                          annotation_text=f'Call Wall ${call_wall:g} · {call_wall_val} $M',
+                          annotation_position='top left',
+                          annotation_font=dict(color='#059669', size=10))
+        if put_wall is not None:
+            fig.add_hline(y=put_wall, line_color='#f43f5e', line_width=1.4, line_dash='dot',
+                          annotation_text=f'Put Wall ${put_wall:g} · {put_wall_val} $M',
+                          annotation_position='bottom left',
+                          annotation_font=dict(color='#e11d48', size=10))
 
         def _vis(shown):
             return [i in shown for i in range(8)]
         buttons = [
-            dict(label='Call / Put',      method='update', args=[{'visible': _vis({0, 1, 3})}]),
             dict(label='Net',             method='update', args=[{'visible': _vis({2, 3})}]),
-            dict(label='Call / Put · $5', method='update', args=[{'visible': _vis({4, 5, 7})}]),
+            dict(label='Call / Put',      method='update', args=[{'visible': _vis({0, 1, 3})}]),
             dict(label='Net · $5',        method='update', args=[{'visible': _vis({6, 7})}]),
+            dict(label='Call / Put · $5', method='update', args=[{'visible': _vis({4, 5, 7})}]),
         ]
 
         fig.update_layout(
             barmode='relative',
-            xaxis=dict(title='Gamma Exposure ($M per 1% move)', range=[-bar_max, bar_max],
-                       zeroline=True, zerolinecolor='rgba(120,120,120,0.45)'),
+            xaxis=dict(title='Gamma Exposure  (← short γ · $M per 1% move · long γ →)',
+                       range=[-bar_max, bar_max],
+                       zeroline=True, zerolinewidth=1.5, zerolinecolor='rgba(120,120,120,0.55)'),
             xaxis2=dict(overlaying='x', side='top', range=[-cum_max, cum_max],
-                        showgrid=False, zeroline=False, tickfont=dict(color='#6366f1', size=9)),
-            yaxis_title='Strike ($)',
+                        showgrid=False, zeroline=False, tickfont=dict(color='#6366f1', size=9),
+                        title=dict(text='cumulative', font=dict(color='#6366f1', size=9))),
+            yaxis=dict(title='Strike ($)', tickformat='$,.0f'),
             template='plotly_white',
-            height=460,
-            margin=dict(l=60, r=30, t=46, b=78),
+            height=520,
+            margin=dict(l=64, r=30, t=50, b=84),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            legend=dict(orientation='h', xanchor='center', x=0.5, yanchor='top', y=-0.14),
-            bargap=0.12,
-            updatemenus=[dict(type='dropdown', direction='down', x=0, y=1.12,
+            legend=dict(orientation='h', xanchor='center', x=0.5, yanchor='top', y=-0.16),
+            bargap=0.18,
+            uniformtext=dict(mode='hide', minsize=8),
+            updatemenus=[dict(type='dropdown', direction='down', x=0, y=1.13,
                               xanchor='left', yanchor='bottom', showactive=True,
                               pad=dict(t=2, b=2), font=dict(size=10), buttons=buttons)],
         )
@@ -875,8 +969,13 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
                 'total_gex': round(total_gex, 1),
                 'regime': 'positive' if total_gex >= 0 else 'negative',
                 'call_wall': call_wall,
+                'call_wall_val': call_wall_val,
                 'put_wall': put_wall,
+                'put_wall_val': put_wall_val,
                 'gamma_flip': gamma_flip,
+                'hvl': hvl,
+                'hvl_val': hvl_val,
+                'spot': round(float(current_price), 2),
                 'top_nodes': top_nodes,
                 'dte_range': f"{selected[0][2]}–{selected[-1][2]}d",
                 'n_expirations': len(selected),
