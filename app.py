@@ -1894,6 +1894,82 @@ def api_config():
     })
 
 
+# Benchmark / index ETFs — used as comparison series, never ranked as alpha names.
+MOMENTUM_BENCHMARK_ETFS = {"SPY", "QQQ", "DIA", "IWM"}
+# Risk-free assumption used for Sharpe / Sortino (annualised). Roughly the
+# average front-end T-bill yield over the sample; keeps ratios honest rather
+# than treating cash as zero-cost.
+RF_ANNUAL = 0.04
+
+
+def _perf_stats(series, rf_annual=RF_ANNUAL):
+    """Return geometric, risk-adjusted performance stats for a daily return series.
+
+    Uses CAGR (not the arithmetic-mean annualisation, which overstates returns
+    for volatile series) and the standard Sharpe (sqrt(252) * mean excess / std).
+    """
+    series = pd.Series(series).dropna()
+    n = len(series)
+    empty = {"total_return": 0.0, "annual_return": 0.0, "volatility": 0.0,
+             "sharpe": 0.0, "sortino": 0.0, "max_dd": 0.0, "calmar": 0.0}
+    if n == 0:
+        return empty
+
+    cum = (1 + series).prod() - 1
+    cagr = (1 + cum) ** (252.0 / n) - 1 if (1 + cum) > 0 else -1.0
+
+    std = series.std(ddof=1) if n > 1 else 0.0
+    ann_vol = std * np.sqrt(252)
+    rf_daily = rf_annual / 252.0
+    excess = series - rf_daily
+    sharpe = (excess.mean() / std * np.sqrt(252)) if std > 0 else 0.0
+
+    downside = excess[excess < 0]
+    dd_std = downside.std(ddof=1) if len(downside) > 1 else 0.0
+    sortino = (excess.mean() / dd_std * np.sqrt(252)) if dd_std > 0 else 0.0
+
+    cum_prod = (1 + series).cumprod()
+    running_max = cum_prod.cummax()
+    drawdown = (cum_prod - running_max) / running_max
+    max_dd = drawdown.min()
+    calmar = (cagr / abs(max_dd)) if max_dd < 0 else 0.0
+
+    return {
+        "total_return": round(cum * 100, 1),
+        "annual_return": round(cagr * 100, 1),
+        "volatility": round(ann_vol * 100, 1),
+        "sharpe": round(sharpe, 2),
+        "sortino": round(sortino, 2),
+        "max_dd": round(max_dd * 100, 1),
+        "calmar": round(calmar, 2),
+    }
+
+
+def _relative_stats(strat, bench, rf_annual=RF_ANNUAL):
+    """Benchmark-relative stats: annualised Jensen alpha, beta, info ratio, corr."""
+    df = pd.concat([pd.Series(strat), pd.Series(bench)], axis=1).dropna()
+    df.columns = ["s", "b"]
+    empty = {"alpha": 0.0, "beta": 0.0, "info_ratio": 0.0, "corr": 0.0}
+    if len(df) < 2 or df["b"].var() == 0:
+        return empty
+
+    beta = df["s"].cov(df["b"]) / df["b"].var()
+    rf_daily = rf_annual / 252.0
+    alpha_daily = (df["s"].mean() - rf_daily) - beta * (df["b"].mean() - rf_daily)
+    alpha_ann = ((1 + alpha_daily) ** 252 - 1) * 100
+
+    active = df["s"] - df["b"]
+    act_std = active.std(ddof=1)
+    info = (active.mean() / act_std * np.sqrt(252)) if act_std > 0 else 0.0
+
+    return {
+        "alpha": round(alpha_ann, 1),
+        "beta": round(beta, 2),
+        "info_ratio": round(info, 2),
+        "corr": round(df["s"].corr(df["b"]), 2),
+    }
+
+
 @app.route('/momentum')
 def momentum_page():
     COST_BPS = 7.5
@@ -1904,7 +1980,7 @@ def momentum_page():
     # 1. Fetch all symbols in database
     with db.get_conn() as conn:
         rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
-    symbols = [r["symbol"] for r in rows if r["symbol"] not in ["SPY", "QQQ"]]
+    symbols = [r["symbol"] for r in rows if r["symbol"] not in MOMENTUM_BENCHMARK_ETFS]
     if not symbols:
         return render_template('momentum.html', data=None, error="No stock price data available in the database. Please visit the homepage and search for tickers first.")
 
@@ -1957,6 +2033,12 @@ def momentum_page():
         mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
         mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
 
+        # Volatility-scaled (risk-adjusted) momentum: 12-1 return per unit of
+        # annualised volatility over the same window. Comparable across names.
+        vol_window = daily_rets.iloc[-252:].std() * np.sqrt(252)
+        ann_vol_1y = float(vol_window) if pd.notna(vol_window) and vol_window > 0 else 0.0
+        risk_adj_mom = round(mom_12_1 / ann_vol_1y, 2) if ann_vol_1y > 0 else 0.0
+
         # Calculate rank in universe
         universe_scores = {}
         for s in symbols:
@@ -2008,33 +2090,29 @@ def momentum_page():
                 hold_series = hold_series[mask]
                 trade_signals = trade_signals[mask]
         
-        # Compute performance stats
-        def get_stats(series):
-            cum = (1 + series).prod() - 1
-            ann_ret = (1 + series.mean()) ** 252 - 1
-            ann_vol = series.std() * np.sqrt(252)
-            sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-            
-            # Drawdown
-            cum_prod = (1 + series).cumprod()
-            running_max = cum_prod.cummax()
-            drawdown = (cum_prod - running_max) / (running_max + 1e-8)
-            max_dd = drawdown.min()
-            return {
-                "total_return": round(cum * 100, 1),
-                "annual_return": round(ann_ret * 100, 1),
-                "volatility": round(ann_vol * 100, 1),
-                "sharpe": round(sharpe, 2),
-                "max_dd": round(max_dd * 100, 1),
-            }
-            
-        strat_stats = get_stats(strat_series)
-        hold_stats = get_stats(hold_series)
+        # Compute performance stats (geometric CAGR + standard Sharpe/Sortino)
+        strat_stats = _perf_stats(strat_series)
+        hold_stats = _perf_stats(hold_series)
+
+        # Fraction of the backtest the trend signal was actually invested.
+        pct_invested = round(float(trade_signals.mean()) * 100, 1) if len(trade_signals) else 0.0
         
         # Plotly chart: Strategy vs Buy & Hold
         cum_strat = (1 + strat_series).cumprod() * 10000
         cum_hold = (1 + hold_series).cumprod() * 10000
-        
+
+        # Full-length Buy & Hold: spans the entire available ticker history
+        # (the strategy needs 252 days of warm-up, but Buy & Hold can start from day 1)
+        hold_full_dates = df.index
+        hold_full_rets = daily_rets.fillna(0.0)
+        if period != 'all':
+            mask_hold_full = hold_full_dates >= start_cutoff
+            if mask_hold_full.any() and mask_hold_full.sum() >= 10:
+                hold_full_dates = hold_full_dates[mask_hold_full]
+                hold_full_rets = hold_full_rets[mask_hold_full]
+        cum_hold_full = (1 + hold_full_rets).cumprod() * 10000
+        hold_full_dates_str = hold_full_dates.strftime('%Y-%m-%d').tolist()
+
         # Convert index to string for guaranteed clean parsing in Plotly
         backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
         
@@ -2077,8 +2155,8 @@ def momentum_page():
         profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
         
         fig_perf = go.Figure()
-        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='Trend-Following (Long/Cash)', line=dict(color='#fbbf24', width=2)))
-        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_hold.tolist(), mode='lines', name=f'Buy & Hold {symbol}', line=dict(color='#64748b', width=1.5, dash='dash')))
+        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='Trend-Following (Long/Cash)', line=dict(color='#fbbf24', width=2), hoverlabel=dict(bgcolor='#000000', bordercolor='#fbbf24', font=dict(color='#fbbf24'))))
+        fig_perf.add_trace(go.Scatter(x=hold_full_dates_str, y=cum_hold_full.tolist(), mode='lines', name=f'Buy & Hold {symbol}', line=dict(color='#64748b', width=1.5, dash='dash')))
         
         # Add Buy entry markers on the performance chart
         if not buy_dates.empty:
@@ -2199,14 +2277,18 @@ def momentum_page():
             "trade_count": trade_count,
             "win_rate": win_rate,
             "profit_factor": profit_factor,
+            "risk_adj_mom": risk_adj_mom,
+            "ann_vol_1y": round(ann_vol_1y * 100, 1),
+            "pct_invested": pct_invested,
             "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
             "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
         }
-        
+
         return render_template(
             'momentum.html',
             data=data,
             tab='ticker',
+            header_badge=f"{symbol} · Rank #{rank} of {len(universe_scores)}",
             available_symbols=available_symbols,
             searched_symbol=symbol,
             period=period,
@@ -2233,35 +2315,49 @@ def momentum_page():
     if len(price_df) < momentum_lookback + 2:
         return render_template('momentum.html', data=None, error=f"Insufficient history in database. Need at least {momentum_lookback} daily bars.")
         
+    daily_rets = price_df.pct_change()
+
     scores = {}
+    vols = {}
     latest_idx = len(price_df) - 1
     recent_idx = latest_idx - exclude_days
     past_idx = latest_idx - momentum_lookback
-    
+
     for t in symbols:
         if t in price_df.columns:
             p_past = price_df[t].iloc[past_idx]
             p_recent = price_df[t].iloc[recent_idx]
             if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
                 scores[t] = (p_recent - p_past) / p_past
-                
+                v = daily_rets[t].iloc[-momentum_lookback:].std() * np.sqrt(252)
+                vols[t] = float(v) if pd.notna(v) and v > 0 else 0.0
+
     # Sort symbols by momentum score
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    leaderboard = [{"symbol": t, "score": round(score * 100, 2), "rank": idx + 1} for idx, (t, score) in enumerate(sorted_scores)]
-    
+    leaderboard = [{
+        "symbol": t,
+        "score": round(score * 100, 2),
+        "vol": round(vols.get(t, 0.0) * 100, 1),
+        "risk_adj": round(score / vols[t], 2) if vols.get(t, 0.0) > 0 else 0.0,
+        "rank": idx + 1,
+    } for idx, (t, score) in enumerate(sorted_scores)]
+
     top_5 = [t for t, _ in sorted_scores[:5]]
     
-    # 4. Backtest Momentum Strategy rebalanced monthly
-    daily_rets = price_df.pct_change()
+    # 4. Backtest Momentum Strategy rebalanced monthly (equal-weight top 5)
     rebalance_freq = 21
     start_idx = momentum_lookback + 1
-    
+
     portfolio_returns = []
     active_portfolio = []
+    prev_weights = {}
+    total_turnover = 0.0
+    rebalance_count = 0
     backtest_dates = price_df.index[start_idx:]
-    
+
     for i in range(start_idx, len(price_df)):
         is_rebalance = (i - start_idx) % rebalance_freq == 0
+        cost_today = 0.0
         if is_rebalance:
             step_scores = {}
             for t in symbols:
@@ -2272,17 +2368,28 @@ def momentum_page():
                         step_scores[t] = (p_recent - p_past) / p_past
             sorted_step = sorted(step_scores.items(), key=lambda x: x[1], reverse=True)
             active_portfolio = [t for t, score in sorted_step[:5] if np.isfinite(score)]
-            
+
+            # Transaction cost scaled by actual turnover (sum of absolute weight
+            # changes), not a flat charge that assumes the book turns over fully.
+            new_weights = {t: 1.0 / len(active_portfolio) for t in active_portfolio} if active_portfolio else {}
+            names = set(new_weights) | set(prev_weights)
+            turnover = sum(abs(new_weights.get(t, 0.0) - prev_weights.get(t, 0.0)) for t in names)
+            if i > start_idx:
+                # One-way turnover = half the gross weight change; round-trip cost
+                # is charged on the notional traded.
+                cost_today = (turnover / 2.0) * (COST_BPS / 1e4)
+                total_turnover += turnover / 2.0
+                rebalance_count += 1
+            prev_weights = new_weights
+
         if active_portfolio:
             daily_ret = daily_rets[active_portfolio].iloc[i].mean()
         else:
             daily_ret = 0.0
-            
-        if is_rebalance and i > start_idx:
-            daily_ret -= (COST_BPS / 1e4)
-            
+
+        daily_ret -= cost_today
         portfolio_returns.append(daily_ret)
-        
+
     strat_series = pd.Series(portfolio_returns, index=backtest_dates)
     spy_series = daily_rets["SPY"].loc[backtest_dates] if "SPY" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
     qqq_series = daily_rets["QQQ"].loc[backtest_dates] if "QQQ" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
@@ -2310,29 +2417,13 @@ def momentum_page():
             if "QQQ" in daily_rets.columns:
                 qqq_series = qqq_series[mask]
     
-    # Compute stats
-    def get_stats(series):
-        cum = (1 + series).prod() - 1
-        ann_ret = (1 + series.mean()) ** 252 - 1
-        ann_vol = series.std() * np.sqrt(252)
-        sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-        
-        # Max drawdown
-        cum_prod = (1 + series).cumprod()
-        running_max = cum_prod.cummax()
-        drawdown = (cum_prod - running_max) / (running_max + 1e-8)
-        max_dd = drawdown.min()
-        return {
-            "total_return": round(cum * 100, 1),
-            "annual_return": round(ann_ret * 100, 1),
-            "volatility": round(ann_vol * 100, 1),
-            "sharpe": round(sharpe, 2),
-            "max_dd": round(max_dd * 100, 1),
-        }
-        
-    strat_stats = get_stats(strat_series)
-    spy_stats = get_stats(spy_series)
-    qqq_stats = get_stats(qqq_series)
+    # Compute stats (geometric CAGR + standard Sharpe/Sortino) and the
+    # benchmark-relative alpha/beta/information ratio that actually tell you
+    # whether the strategy added value versus just owning the index.
+    strat_stats = _perf_stats(strat_series)
+    spy_stats = _perf_stats(spy_series)
+    qqq_stats = _perf_stats(qqq_series)
+    rel_spy = _relative_stats(strat_series, spy_series)
     
     # Create interactive plot
     cum_strat = (1 + strat_series).cumprod() * 10000
@@ -2363,22 +2454,42 @@ def momentum_page():
         font=dict(family='Inter, sans-serif')
     )
     chart_html = fig.to_html(full_html=False, include_plotlyjs=False)
-    
+
+    # Average annual one-way turnover (rebalances are monthly => ~12.6/yr).
+    avg_turnover = round((total_turnover / rebalance_count) * (252.0 / rebalance_freq) * 100, 0) if rebalance_count else 0.0
+
+    # Data-driven verdict — describe what actually happened, don't assert a win.
+    excess_spy = round(strat_stats["total_return"] - spy_stats["total_return"], 1)
+    beat_spy = strat_stats["total_return"] > spy_stats["total_return"]
+    beat_qqq = strat_stats["total_return"] > qqq_stats["total_return"]
+    if beat_spy and beat_qqq:
+        verdict = "outperformed both benchmarks"
+    elif beat_spy or beat_qqq:
+        verdict = "beat the S&P 500 but trailed the Nasdaq 100" if beat_spy else "beat the Nasdaq 100 but trailed the S&P 500"
+    else:
+        verdict = "underperformed both benchmarks"
+
     data = {
         "leaderboard": leaderboard,
         "top_5": top_5,
         "strat_stats": strat_stats,
         "spy_stats": spy_stats,
         "qqq_stats": qqq_stats,
+        "rel_spy": rel_spy,
+        "excess_spy": excess_spy,
+        "verdict": verdict,
+        "avg_turnover": avg_turnover,
+        "rf_annual": round(RF_ANNUAL * 100, 1),
         "chart_html": chart_html,
         "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
         "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
     }
-    
+
     return render_template(
         'momentum.html',
         data=data,
         tab='universe',
+        header_badge=f"Sharpe {strat_stats['sharpe']} · IR {rel_spy['info_ratio']} vs SPY",
         available_symbols=available_symbols,
         searched_symbol='',
         period=period,
@@ -2408,6 +2519,7 @@ def settings_page():
         'settings.html',
         current=current,
         status=providers.configured(),
+        ai_providers=providers.AI_PROVIDERS,
         saved=saved,
     )
 

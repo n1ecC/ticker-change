@@ -336,7 +336,7 @@
 
     {% if data.charts.monte_carlo %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Monte Carlo Forward Projection</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Monte Carlo Forward Projection', 'monte_carlo') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">
         1,000 simulated price paths over the next year (geometric Brownian motion calibrated to this stock's drift &amp; volatility). Bands show the 5–95% and 25–75% outcome ranges. Vertical lines mark 3-month &amp; 6-month milestones.
         {% if data.stats.mc_median is not none %}
@@ -354,25 +354,35 @@
 
   </div>
 
-  <!-- Row 5b: Analyst price target / options smile (when available) -->
-  {% if data.charts.price_target or data.charts.options_smile %}
+  <!-- Row 5b: Options IV smile + ML signal (paired so neither sits half-empty) -->
+  {% if data.charts.options_smile or data.ml %}
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    {% if data.charts.price_target %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Analyst Price Target</h2>
-      <p class="text-xs text-zinc-400 mb-3">
-        Wall Street consensus — low, mean, and high 12-month price targets from covering analysts.
-        <span class="text-amber-500 font-mono">◆</span> mean target &nbsp;
-        <span class="font-mono">●</span> current price.
-      </p>
-      {{ data.charts.price_target | safe }}
-    </div>
-    {% endif %}
     {% if data.charts.options_smile %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Options IV Smile / Skew</h2>
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.ml %}lg:col-span-2{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Options IV Smile / Skew', 'iv_smile') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">Implied volatility across strike moneyness for the nearest expirations. A steep left skew means the market prices downside risk (puts) more expensively than upside.</p>
       {{ data.charts.options_smile | safe }}
+    </div>
+    {% endif %}
+    {% if data.ml %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.charts.options_smile %}lg:col-span-2{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">ML Signal</h2>
+      <p class="text-[11px] text-zinc-400 mb-3">Gradient-boosted model on chart-pattern features, triple-barrier labelled over a ~{{ data.ml.horizon_days }}-day horizon. Probabilistic, not advice.</p>
+      <div class="flex items-baseline gap-2 mb-3">
+        <span class="text-2xl font-bold font-mono
+          {% if data.ml.action == 'Buy' %}text-emerald-400{% elif data.ml.action == 'Sell' %}text-rose-400{% else %}text-zinc-400{% endif %}">{{ data.ml.action }}</span>
+        <span class="text-xs text-zinc-400">{{ (data.ml.confidence * 100) | round(0, 'common') }}% confidence</span>
+      </div>
+      {% for label, key, color in [('Buy','buy','bg-emerald-500'),('Hold','hold','bg-zinc-400'),('Sell','sell','bg-rose-500')] %}
+      <div class="mb-1.5">
+        <div class="flex justify-between text-[11px] font-mono text-zinc-400 mb-0.5">
+          <span>{{ label }}</span><span>{{ (data.ml.proba[key] * 100) | round(0, 'common') }}%</span>
+        </div>
+        <div class="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+          <div class="h-full {{ color }}" style="width: {{ (data.ml.proba[key] * 100) | round(1) }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
     </div>
     {% endif %}
   </div>
@@ -381,7 +391,7 @@
   <!-- Row 5c: Dealer Gamma Exposure (GEX) profile -->
   {% if data.charts.gex %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Dealer Gamma Exposure (GEX)</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Dealer Gamma Exposure (GEX)', 'gex') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Estimated market-maker gamma at each strike across the nearest {{ data.gex.n_expirations }} expirations ({{ data.gex.dte_range }} to expiry), using the standard dealer convention (long calls <span class="text-emerald-400">+</span>, short puts <span class="text-rose-400">−</span>). Γ is computed via Black-Scholes from open interest &amp; implied volatility. Units: $M of gamma per 1% move.
       {% if data.gex.gamma_flip or data.gex.call_wall or data.gex.put_wall %}
@@ -424,32 +434,22 @@
   </div>
   {% endif %}
 
-  <!-- Row 5d: ML signal + AI analyst report -->
-  {% if data.ml or data.ai_report %}
+  <!-- Row 5d: Analyst price target + AI analyst report -->
+  {% if data.charts.price_target or data.ai_report %}
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    {% if data.ml %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">ML Signal</h2>
-      <p class="text-[11px] text-zinc-400 mb-3">Gradient-boosted model on chart-pattern features, triple-barrier labelled over a ~{{ data.ml.horizon_days }}-day horizon. Probabilistic, not advice.</p>
-      <div class="flex items-baseline gap-2 mb-3">
-        <span class="text-2xl font-bold font-mono
-          {% if data.ml.action == 'Buy' %}text-emerald-400{% elif data.ml.action == 'Sell' %}text-rose-400{% else %}text-zinc-400{% endif %}">{{ data.ml.action }}</span>
-        <span class="text-xs text-zinc-400">{{ (data.ml.confidence * 100) | round(0, 'common') }}% confidence</span>
-      </div>
-      {% for label, key, color in [('Buy','buy','bg-emerald-500'),('Hold','hold','bg-zinc-400'),('Sell','sell','bg-rose-500')] %}
-      <div class="mb-1.5">
-        <div class="flex justify-between text-[11px] font-mono text-zinc-400 mb-0.5">
-          <span>{{ label }}</span><span>{{ (data.ml.proba[key] * 100) | round(0, 'common') }}%</span>
-        </div>
-        <div class="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-          <div class="h-full {{ color }}" style="width: {{ (data.ml.proba[key] * 100) | round(1) }}%"></div>
-        </div>
-      </div>
-      {% endfor %}
+    {% if data.charts.price_target %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.ai_report %}lg:col-span-3{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Analyst Price Target', 'price_target') }}</h2>
+      <p class="text-xs text-zinc-400 mb-3">
+        Wall Street consensus — low, mean, and high 12-month price targets from covering analysts.
+        <span class="text-amber-500 font-mono">◆</span> mean target &nbsp;
+        <span class="font-mono">●</span> current price.
+      </p>
+      {{ data.charts.price_target | safe }}
     </div>
     {% endif %}
     {% if data.ai_report %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if data.ml %}lg:col-span-2{% else %}lg:col-span-3{% endif %}">
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if data.charts.price_target %}lg:col-span-2{% else %}lg:col-span-3{% endif %}">
       <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2">AI Analyst Report</h2>
       <div class="ai-report text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed space-y-2">
         {{ data.ai_report | safe }}
@@ -462,13 +462,13 @@
   <!-- Row 6: Sharpe + Seasonality -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Sharpe Ratio</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Sharpe Ratio', 'sharpe') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">1-year rolling Sharpe (risk-free ≈ 0). Above 1 is generally considered strong risk-adjusted return.</p>
       {{ data.charts.sharpe | safe }}
     </div>
 
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Seasonality</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Seasonality', 'seasonality') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">Average daily return by calendar month over the full history. Identifies recurring seasonal patterns and the strongest/weakest calendar periods.</p>
       {{ data.charts.seasonality | safe }}
     </div>
@@ -477,7 +477,7 @@
   <!-- Row 7: Insider Transactions (full width) -->
   {% if data.charts.insider %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Insider Transaction Activity</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Insider Transaction Activity', 'insider_transactions') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Monthly net shares bought (green) or sold (red) by company insiders, overlaid on price.
       Sustained net buying from insiders — especially executives — is a historically bullish signal.
