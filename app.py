@@ -2814,7 +2814,7 @@ def ai_summary_page():
     }
 
     # Generate or fetch the comprehensive strategy report
-    comprehensive_report = ai.generate_comprehensive_report(ticker, payload)
+    comprehensive_report, report_error = ai.generate_comprehensive_report(ticker, payload)
 
     # We also pass the clean payload to the page so it can render the raw tables as well!
     return render_template(
@@ -2822,6 +2822,7 @@ def ai_summary_page():
         ticker=ticker,
         data=payload,
         report=comprehensive_report,
+        report_error=report_error,
         configured=bool(providers.ai_providers()),
     )
 
