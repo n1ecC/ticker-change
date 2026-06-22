@@ -435,7 +435,7 @@ function applyChartTheme() {
 
     const dark = document.documentElement.classList.contains('dark');
     const grid = dark ? '#27272a' : '#e4e4e7';
-    const text = dark ? '#a1a1aa' : '#52525b';
+    const text = dark ? '#ffffff' : '#52525b';
 
     Plotly.relayout(graphDiv, {
         'paper_bgcolor': 'rgba(0,0,0,0)',
@@ -444,7 +444,7 @@ function applyChartTheme() {
         'font.family': 'Inter, sans-serif',
         'hoverlabel.bgcolor': dark ? '#18181b' : '#ffffff',
         'hoverlabel.bordercolor': grid,
-        'hoverlabel.font.color': dark ? '#e4e4e7' : '#27272a',
+        'hoverlabel.font.color': dark ? '#ffffff' : '#27272a',
         'xaxis.gridcolor': grid,
         'xaxis2.gridcolor': grid,
         'yaxis.gridcolor': grid,

@@ -481,13 +481,25 @@
               'plot_bgcolor': 'rgba(0,0,0,0)',
               'xaxis.gridcolor': isDark ? '#27272a' : '#f4f4f5',
               'yaxis.gridcolor': isDark ? '#27272a' : '#f4f4f5',
-              'xaxis.title.font.color': isDark ? '#a1a1aa' : '#71717a',
-              'yaxis.title.font.color': isDark ? '#a1a1aa' : '#71717a',
-              'xaxis.tickfont.color': isDark ? '#a1a1aa' : '#71717a',
-              'yaxis.tickfont.color': isDark ? '#a1a1aa' : '#71717a',
-              'legend.font.color': isDark ? '#e4e4e7' : '#27272a',
-              'title.font.color': isDark ? '#f4f4f5' : '#18181b'
+              'xaxis.title.font.color': isDark ? '#ffffff' : '#71717a',
+              'yaxis.title.font.color': isDark ? '#ffffff' : '#71717a',
+              'xaxis.tickfont.color': isDark ? '#ffffff' : '#71717a',
+              'yaxis.tickfont.color': isDark ? '#ffffff' : '#71717a',
+              'legend.font.color': isDark ? '#ffffff' : '#27272a',
+              'title.font.color': isDark ? '#ffffff' : '#18181b'
             };
+            
+            // Sync annotation text colors dynamically
+            if (c.layout && c.layout.annotations && c.layout.annotations.length > 0) {
+              const updatedAnns = c.layout.annotations.map(ann => {
+                const newAnn = {...ann};
+                newAnn.font = newAnn.font || {};
+                newAnn.font.color = isDark ? '#ffffff' : '#71717a';
+                return newAnn;
+              });
+              update['annotations'] = updatedAnns;
+            }
+            
             Plotly.relayout(c, update);
           });
         }
@@ -505,13 +517,25 @@
           'plot_bgcolor': 'rgba(0,0,0,0)',
           'xaxis.gridcolor': isDark ? '#27272a' : '#f4f4f5',
           'yaxis.gridcolor': isDark ? '#27272a' : '#f4f4f5',
-          'xaxis.title.font.color': isDark ? '#a1a1aa' : '#71717a',
-          'yaxis.title.font.color': isDark ? '#a1a1aa' : '#71717a',
-          'xaxis.tickfont.color': isDark ? '#a1a1aa' : '#71717a',
-          'yaxis.tickfont.color': isDark ? '#a1a1aa' : '#71717a',
-          'legend.font.color': isDark ? '#e4e4e7' : '#27272a',
-          'title.font.color': isDark ? '#f4f4f5' : '#18181b'
+          'xaxis.title.font.color': isDark ? '#ffffff' : '#71717a',
+          'yaxis.title.font.color': isDark ? '#ffffff' : '#71717a',
+          'xaxis.tickfont.color': isDark ? '#ffffff' : '#71717a',
+          'yaxis.tickfont.color': isDark ? '#ffffff' : '#71717a',
+          'legend.font.color': isDark ? '#ffffff' : '#27272a',
+          'title.font.color': isDark ? '#ffffff' : '#18181b'
         };
+        
+        // Sync annotation text colors dynamically
+        if (c.layout && c.layout.annotations && c.layout.annotations.length > 0) {
+          const updatedAnns = c.layout.annotations.map(ann => {
+            const newAnn = {...ann};
+            newAnn.font = newAnn.font || {};
+            newAnn.font.color = isDark ? '#ffffff' : '#71717a';
+            return newAnn;
+          });
+          update['annotations'] = updatedAnns;
+        }
+        
         Plotly.relayout(c, update);
       });
     });
