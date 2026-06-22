@@ -31,7 +31,51 @@
        class="pb-3 text-sm font-semibold border-b-2 transition-colors duration-200 {% if tab == 'ticker' %}border-amber-500 text-amber-500 dark:text-amber-400{% else %}border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100{% endif %}">
       Single Ticker Scanner
     </a>
+    <a href="/momentum?tab=screener" 
+       class="pb-3 text-sm font-semibold border-b-2 transition-colors duration-200 {% if tab == 'screener' %}border-amber-500 text-amber-500 dark:text-amber-400{% else %}border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100{% endif %}">
+      Momentum Screener
+    </a>
   </div>
+
+  <!-- Collapsible Educational Section -->
+  <details class="bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden group shadow-sm transition-all duration-200">
+    <summary class="flex justify-between items-center px-5 py-4 cursor-pointer select-none font-semibold text-sm text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/50">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+        </svg>
+        Understanding Momentum Alpha & Trend Philosophy (Click to expand)
+      </div>
+      <svg class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform duration-200" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+      </svg>
+    </summary>
+    
+    <div class="px-5 pb-5 pt-2 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-300 space-y-4 leading-relaxed bg-white dark:bg-zinc-900/20">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-2">
+          <h4 class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wide">1. What is Momentum Alpha?</h4>
+          <p>
+            Momentum is a premier empirical asset-pricing anomaly. It describes the tendency for assets with strong relative performance over the medium term (3-12 months) to continue outperforming, while weak assets continue to lag. Momentum forms the mathematical core of Commodity Trading Advisor (CTA) trend-following models.
+          </p>
+          <h4 class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wide">2. The 12-1 Momentum Rule</h4>
+          <p>
+            To calculate momentum scores, we measure return over the past 12 months (252 trading days) but <strong>exclude the most recent 1 month (21 trading days)</strong>. Short-term returns (1-30 days) are heavily driven by liquidity flows, market impact, and short-term exhaustion, resulting in high mean-reversion. Stripping out the last 21 days isolates the clean, medium-term structural trend.
+          </p>
+        </div>
+        <div class="space-y-2">
+          <h4 class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wide">3. Volatility-Scaled (Risk-Adjusted) Momentum</h4>
+          <p>
+            Ranks are determined using a <strong>Risk-Adjusted Momentum Score</strong>, computed by dividing the 12-1 momentum return by the asset's annualized standard deviation (volatility) over the same period. This ensures that stable, persistent uptrends are prioritized over erratic, high-volatility spikes that may crash unpredictably.
+          </p>
+          <h4 class="font-bold text-zinc-900 dark:text-zinc-100 text-xs uppercase tracking-wide">4. Time-Series Strategy & Frictions</h4>
+          <p>
+            The strategy backtested on this page simulates a <strong>Time-Series Momentum</strong> model. It holds the stock long when its 12-1 momentum score is positive (&gt;0%), and drops to 100% Cash (flat) during bearish crossovers. Frictional drag is accounted for by charging a realistic <strong>7.5 basis points round-trip execution fee</strong> on all traded notional.
+          </p>
+        </div>
+      </div>
+    </div>
+  </details>
 
   {% if error and tab != 'ticker' %}
   <!-- General Error Card -->
@@ -476,6 +520,155 @@
     </div>
   </div>
   {% endif %}
+  {% endif %}
+
+  <!-- Tab Content: Momentum Screener -->
+  {% if tab == 'screener' %}
+  <div class="space-y-6">
+    <!-- Screener Filter Form -->
+    <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+      <div class="mb-4">
+        <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-50">Cross-Sectional Momentum Screener</h2>
+        <p class="text-xs text-zinc-400">Specify quantitative volatility and trend filters to screen the active stock database universe.</p>
+      </div>
+      
+      <form action="/momentum" method="GET" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <input type="hidden" name="tab" value="screener">
+        
+        <!-- Filter 1: Min 12-1 Return -->
+        <div class="flex flex-col gap-1.5">
+          <label for="min_mom" class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Min 12-1 Return (%)</label>
+          <input 
+            type="number" 
+            step="0.5" 
+            name="min_mom" 
+            id="min_mom"
+            value="{{ data.min_mom }}"
+            class="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-xs font-semibold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          >
+        </div>
+        
+        <!-- Filter 2: Max Volatility -->
+        <div class="flex flex-col gap-1.5">
+          <label for="max_vol" class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Max Annualized Vol (%)</label>
+          <input 
+            type="number" 
+            step="0.5" 
+            name="max_vol" 
+            id="max_vol"
+            value="{{ data.max_vol }}"
+            class="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-xs font-semibold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          >
+        </div>
+
+        <!-- Filter 3: Min Risk-Adjusted Score -->
+        <div class="flex flex-col gap-1.5">
+          <label for="min_risk_adj" class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Min Risk-Adjusted Score</label>
+          <input 
+            type="number" 
+            step="0.1" 
+            name="min_risk_adj" 
+            id="min_risk_adj"
+            value="{{ data.min_risk_adj }}"
+            class="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-xs font-semibold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          >
+        </div>
+
+        <!-- Filter 4: Trend State -->
+        <div class="flex flex-col gap-1.5">
+          <label for="trend" class="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Trend Regime</label>
+          <select 
+            name="trend" 
+            id="trend"
+            class="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-xs font-semibold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          >
+            <option value="all" {% if data.trend_filter == 'all' %}selected{% endif %}>All regimes</option>
+            <option value="bullish" {% if data.trend_filter == 'bullish' or not data.trend_filter %}selected{% endif %}>Bullish only (&gt; 0%)</option>
+            <option value="bearish" {% if data.trend_filter == 'bearish' %}selected{% endif %}>Bearish only (&lt;= 0%)</option>
+          </select>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="flex items-end">
+          <button type="submit" class="w-full px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white dark:text-zinc-950 font-bold text-xs transition-colors duration-200 shadow-sm">
+            Run Screener
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Screener Results Card -->
+    <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
+      <div class="p-5 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-50">Screener Matches</h2>
+          <p class="text-[11px] text-zinc-400 mt-0.5">Found {{ data.total_screened }} symbols matching criteria</p>
+        </div>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-zinc-50 dark:bg-zinc-900/50 text-xs font-semibold text-zinc-400 border-b border-zinc-200 dark:border-zinc-800">
+            <tr>
+              <th class="py-3.5 px-6 w-16 text-center">Rank</th>
+              <th class="py-3.5 px-6">Ticker</th>
+              <th class="py-3.5 px-6 text-right">Price</th>
+              <th class="py-3.5 px-6 text-right">12-1 Return</th>
+              <th class="py-3.5 px-6 text-right">Annual Volatility</th>
+              <th class="py-3.5 px-6 text-right">Risk-Adj Score</th>
+              <th class="py-3.5 px-6 text-center">Trend</th>
+              <th class="py-3.5 px-6 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+            {% for r in data.results %}
+            <tr class="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+              <td class="py-3.5 px-6 font-mono font-semibold text-zinc-400 text-center">{{ r.rank }}</td>
+              <td class="py-3.5 px-6 font-bold text-zinc-900 dark:text-zinc-50">
+                <a href="/stock?ticker={{ r.symbol }}" class="hover:text-amber-500 transition-colors flex items-center gap-1.5">
+                  {{ r.symbol }}
+                </a>
+              </td>
+              <td class="py-3.5 px-6 text-right font-mono font-medium">${{ "%.2f"|format(r.price) }}</td>
+              <td class="py-3.5 px-6 font-mono text-right font-semibold {% if r.score >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                {{ '+' if r.score >= 0 }}{{ r.score }}%
+              </td>
+              <td class="py-3.5 px-6 font-mono text-right text-zinc-500 dark:text-zinc-400">{{ r.vol }}%</td>
+              <td class="py-3.5 px-6 font-mono text-right font-bold text-amber-500 dark:text-amber-400">{{ r.risk_adj }}</td>
+              <td class="py-3.5 px-6 text-center">
+                {% if r.trend == 'BULLISH' %}
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-500/20">
+                  Bullish
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-500/20">
+                  Bearish
+                </span>
+                {% endif %}
+              </td>
+              <td class="py-3.5 px-6 text-center">
+                <div class="flex items-center justify-center gap-3">
+                  <a href="/momentum?tab=ticker&symbol={{ r.symbol }}" class="text-xs px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-amber-500 hover:text-white dark:hover:bg-amber-500 dark:hover:text-zinc-950 font-semibold transition-all">
+                    Backtest
+                  </a>
+                  <a href="/ai-summary?ticker={{ r.symbol }}" class="text-xs px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-amber-500 hover:text-white dark:hover:bg-amber-500 dark:hover:text-zinc-950 font-semibold transition-all">
+                    AI Report
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="8" class="py-12 text-center text-sm text-zinc-400 font-mono">
+                No tickers match the specified screener criteria. Try relaxing the filters.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
   {% endif %}
   {% endif %}
 </div>

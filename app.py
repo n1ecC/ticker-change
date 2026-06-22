@@ -2495,6 +2495,114 @@ def momentum_page():
             error=None
         )
 
+    elif tab == 'screener':
+        min_mom = float(request.args.get('min_mom', '0.0'))
+        max_vol = float(request.args.get('max_vol', '60.0'))
+        min_risk_adj = float(request.args.get('min_risk_adj', '0.5'))
+        trend_filter = request.args.get('trend', 'bullish')
+
+        # Load close prices for all symbols in database
+        prices = {}
+        for t in symbols:
+            df = db.get_prices(t)
+            if df is not None:
+                prices[t] = df["close"]
+
+        if not prices:
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='screener',
+                error="No stock data available in database.",
+                available_symbols=available_symbols,
+                searched_symbol='',
+                period=period
+            )
+
+        price_df = pd.DataFrame(prices)
+        if len(price_df) < 273:
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='screener',
+                error="Insufficient price history in database to run screener.",
+                available_symbols=available_symbols,
+                searched_symbol='',
+                period=period
+            )
+
+        daily_rets = price_df.pct_change()
+        momentum_lookback = 252
+        exclude_days = 21
+
+        latest_idx = len(price_df) - 1
+        recent_idx = latest_idx - exclude_days
+        past_idx = latest_idx - momentum_lookback
+
+        screened_results = []
+        for t in symbols:
+            if t in price_df.columns:
+                p_past = price_df[t].iloc[past_idx]
+                p_recent = price_df[t].iloc[recent_idx]
+                p_latest = price_df[t].iloc[-1]
+                if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
+                    score = (p_recent - p_past) / p_past
+                    v = daily_rets[t].iloc[-momentum_lookback:].std() * np.sqrt(252)
+                    vol = float(v) if pd.notna(v) and v > 0 else 0.0
+                    risk_adj = score / vol if vol > 0 else 0.0
+
+                    score_pct = score * 100
+                    vol_pct = vol * 100
+                    
+                    # Apply screen filters
+                    if score_pct < min_mom:
+                        continue
+                    if vol_pct > max_vol:
+                        continue
+                    if risk_adj < min_risk_adj:
+                        continue
+
+                    trend = "BULLISH" if score_pct > 0 else "BEARISH"
+                    if trend_filter == 'bullish' and trend != 'BULLISH':
+                        continue
+                    if trend_filter == 'bearish' and trend != 'BEARISH':
+                        continue
+
+                    screened_results.append({
+                        "symbol": t,
+                        "score": round(score_pct, 2),
+                        "vol": round(vol_pct, 1),
+                        "risk_adj": round(risk_adj, 2),
+                        "trend": trend,
+                        "price": round(float(p_latest), 2)
+                    })
+
+        # Sort by risk_adj descending
+        screened_results = sorted(screened_results, key=lambda x: x["risk_adj"], reverse=True)
+        # Assign ranks
+        for idx, item in enumerate(screened_results):
+            item["rank"] = idx + 1
+
+        data = {
+            "results": screened_results,
+            "min_mom": min_mom,
+            "max_vol": max_vol,
+            "min_risk_adj": min_risk_adj,
+            "trend_filter": trend_filter,
+            "total_screened": len(screened_results)
+        }
+
+        return render_template(
+            'momentum.html',
+            data=data,
+            tab='screener',
+            header_badge=f"Screened {len(screened_results)} Tickers",
+            available_symbols=available_symbols,
+            searched_symbol='',
+            period=period,
+            error=None
+        )
+
     # ELSE: Tab == 'universe'
     # 2. Load close prices for these symbols
     prices = {}
