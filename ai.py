@@ -170,13 +170,14 @@ def _openai_compatible_report(base_url: str, key: str, model: str, user_msg: str
         timeout=HTTP_TIMEOUT,
     )
     if resp.status_code != 200:
-        print(f"[ai] {base_url} -> HTTP {resp.status_code}: {resp.text[:200]}")
-        return None
+        raise Exception(f"HTTP {resp.status_code}: {resp.text[:300]}")
     choices = (resp.json() or {}).get("choices") or []
     if not choices:
-        return None
+        raise Exception(f"No choices returned by model API. Response: {resp.text[:300]}")
     content = (choices[0].get("message") or {}).get("content")
-    return content.strip() if content else None
+    if not content:
+        raise Exception(f"Model returned empty content choice. Response: {resp.text[:300]}")
+    return content.strip()
 
 
 def generate_report(ticker: str, data: dict) -> str | None:
