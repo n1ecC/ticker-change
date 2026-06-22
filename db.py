@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sqlite3
 import json
 import pandas as pd
@@ -45,7 +46,43 @@ def init_db():
                 payload    TEXT     NOT NULL,
                 PRIMARY KEY (provider, key)
             );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
+
+
+def get_setting(key: str, default: str = "") -> str:
+    """Return a stored app setting (e.g. a user-supplied API key), or default."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return default  # table not created yet
+    return row["value"] if row is not None else default
+
+
+def set_setting(key: str, value: str):
+    """Insert or update an app setting."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+
+
+def get_all_settings() -> dict:
+    """Return every stored app setting as a {key: value} dict."""
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return {r["key"]: r["value"] for r in rows}
 
 
 def cache_get(provider: str, key: str, ttl_hours: float):

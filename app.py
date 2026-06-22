@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -11,12 +12,21 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 import threading
+import math
 from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
+import db
 import providers
+import ml
+import ai
+from glossary import GLOSSARY
 
 app = Flask(__name__)
 CORS(app)
+
+# Expose metric definitions to every template so the `metric` tooltip macro and
+# the /glossary page share a single source of truth.
+app.jinja_env.globals['GLOSSARY'] = GLOSSARY
 
 with app.app_context():
     init_db()
@@ -446,6 +456,15 @@ def index():
 def health():
     return jsonify({"status": "ok"}), 200
 
+
+@app.route('/glossary')
+def glossary_page():
+    """Full metric reference, grouped by section (preserving GLOSSARY order)."""
+    sections: dict[str, list] = {}
+    for key, g in GLOSSARY.items():
+        sections.setdefault(g['section'], []).append({**g, 'key': key})
+    return render_template('glossary.html', sections=sections)
+
 @app.route('/api/stock/<ticker>')
 def stock_api(ticker):
     data = get_stock_data(ticker)
@@ -637,6 +656,333 @@ def get_options_smile(ticker: str, current_price: float) -> str | None:
         return fig.to_html(full_html=False, include_plotlyjs=False)
     except Exception as e:
         print(f"Options smile failed for {ticker}: {e}")
+        return None
+
+
+def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -> dict | None:
+    """Build a dealer Gamma Exposure (GEX) profile from yfinance option chains.
+
+    Per strike:  GEX = Γ × OpenInterest × 100 × Spot² × 0.01, signed by the
+    standard dealer-positioning convention (long calls → +, short puts → −).
+    yfinance does not return Γ, so it is computed with the in-house Black-Scholes
+    engine (`calculate_greeks`) from the strike, spot, time-to-expiry and the
+    chain's implied volatility. Aggregated across the nearest expirations this
+    yields the structural levels traders watch: the gamma-flip strike, the call
+    wall (resistance) and the put wall (support). Values are in $M per 1% move.
+
+    This is a naive end-of-day model (delayed yfinance OI, uniform dealer
+    assumptions) — directional, not an institutional low-latency feed.
+    """
+    try:
+        stock = yf.Ticker(ticker.upper())
+        expirations = stock.options
+        if not expirations or not current_price:
+            return None
+
+        today = datetime.now()
+        # Near-term expirations dominate dealer gamma; cap the chain count so the
+        # page stays responsive (each option_chain call is a separate request).
+        selected = []
+        for exp in expirations:
+            try:
+                exp_dt = datetime.strptime(exp, '%Y-%m-%d')
+            except ValueError:
+                continue
+            dte = (exp_dt - today).days
+            if dte < 0:
+                continue
+            selected.append((exp, exp_dt, dte))
+            if len(selected) >= 6:
+                break
+        if not selected:
+            return None
+
+        # Independent network calls — fetch the chains concurrently.
+        def _fetch(exp_tuple):
+            try:
+                return exp_tuple, stock.option_chain(exp_tuple[0])
+            except Exception:
+                return exp_tuple, None
+
+        with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+            fetched = list(pool.map(_fetch, selected))
+
+        lo, hi = current_price * 0.80, current_price * 1.20
+        agg: dict = {}  # strike -> {'call': gex, 'put': gex}
+
+        for (exp, exp_dt, dte), chain in fetched:
+            if chain is None:
+                continue
+            t_years = max(1e-5, (dte + 1) / 365.0)
+            for df_side, side in ((getattr(chain, 'calls', None), 'call'),
+                                  (getattr(chain, 'puts', None), 'put')):
+                if df_side is None or df_side.empty:
+                    continue
+                for _, row in df_side.iterrows():
+                    k = float(row.get('strike', 0) or 0)
+                    if not (lo <= k <= hi):
+                        continue
+                    oi = row.get('openInterest', 0)
+                    iv = row.get('impliedVolatility', 0)
+                    if oi is None or iv is None or np.isnan(oi) or np.isnan(iv):
+                        continue
+                    oi, iv = float(oi), float(iv)
+                    if oi <= 0 or iv <= 0.01:
+                        continue
+                    greeks = calculate_greeks(current_price, k, t_years, iv, rf_rate)
+                    if not greeks:
+                        continue
+                    # Dollar gamma per 1% move, scaled to millions of $.
+                    gex = greeks['gamma'] * oi * 100 * current_price ** 2 * 0.01 / 1e6
+                    bucket = agg.setdefault(k, {'call': 0.0, 'put': 0.0})
+                    bucket[side] += gex
+        if not agg:
+            return None
+
+        strikes  = sorted(agg.keys())
+        call_gex = [agg[k]['call'] for k in strikes]    # dealers long calls  → +
+        put_gex  = [-agg[k]['put'] for k in strikes]    # dealers short puts  → −
+        net_gex  = [c + p for c, p in zip(call_gex, put_gex)]
+
+        # $5-binned aggregation: collapse minor/weekly strikes into the round
+        # institutional levels so a single noisy strike can't masquerade as a
+        # wall. Purely a visual view — stats below stay on the precise strikes.
+        bin_agg: dict = {}
+        for k in strikes:
+            slot = bin_agg.setdefault(round(k / 5.0) * 5, {'call': 0.0, 'put': 0.0})
+            slot['call'] += agg[k]['call']
+            slot['put']  += agg[k]['put']
+        bin_strikes = sorted(bin_agg.keys())
+        bin_call = [bin_agg[k]['call'] for k in bin_strikes]
+        bin_put  = [-bin_agg[k]['put'] for k in bin_strikes]
+        bin_net  = [c + p for c, p in zip(bin_call, bin_put)]
+
+        # Cumulative net GEX from the lowest strike up. Its zero crossing is the
+        # gamma flip; its slope at a strike is the local gamma density (steep =
+        # concentrated/pinning, flat = thin/air-pocket).
+        cum     = list(np.cumsum(net_gex))
+        bin_cum = list(np.cumsum(bin_net))
+
+        # Walls = largest gamma concentration on the side of spot where it can
+        # actually act as resistance/support. A call wall below spot (or put wall
+        # above) is meaningless, so constrain by side, falling back to the global
+        # extreme only if one side is empty.
+        def _wall(vals, want_above, pick):
+            sided = [(v, k) for v, k in zip(vals, strikes)
+                     if (k >= current_price) == want_above]
+            pool  = [(v, k) for v, k in (sided or list(zip(vals, strikes)))
+                     if (v > 0 if pick is max else v < 0)]
+            return pick(pool)[1] if pool else None
+
+        call_wall = _wall(call_gex, want_above=True,  pick=max)
+        put_wall  = _wall(put_gex,  want_above=False, pick=min)
+
+        # Gamma flip: strike where cumulative net GEX crosses zero (linear-
+        # interpolated). Below it dealers are net-short gamma (trend-amplifying);
+        # above it net-long gamma (mean-reverting / vol-dampening).
+        gamma_flip = None
+        for i in range(1, len(cum)):
+            if (cum[i - 1] <= 0 < cum[i]) or (cum[i - 1] >= 0 > cum[i]):
+                x0, x1, y0, y1 = strikes[i - 1], strikes[i], cum[i - 1], cum[i]
+                gamma_flip = round(float(x0 + (x1 - x0) * (-y0) / (y1 - y0)), 2) if y1 != y0 else float(x1)
+                break
+
+        total_gex = float(np.sum(net_gex))
+
+        # Top concentration nodes: the strikes carrying the most gamma (by |net|),
+        # their share of total gross gamma, and the hedging behaviour they impose.
+        # The leaderboard a trader reads instead of eyeballing a 100-point axis.
+        gross  = sum(abs(v) for v in net_gex) or 1.0
+        ranked = sorted(zip(strikes, net_gex, call_gex, put_gex),
+                        key=lambda t: abs(t[1]), reverse=True)
+        top_nodes = [{
+            'strike': round(k, 2),
+            'net':    round(n, 1),
+            'pct':    round(abs(n) / gross * 100, 1),
+            'kind':   'Vol-dampening' if n >= 0 else 'Trend-amplifying',
+            'side':   'Call' if abs(c) >= abs(p) else 'Put',
+        } for k, n, c, p in ranked[:5]]
+
+        # --- Key levels & their magnitudes -----------------------------------
+        # The handful of strikes a desk actually trades off: the call wall
+        # (largest + gamma above spot → resistance), the put wall (largest −
+        # gamma below spot → support), and the absolute gamma magnet (HVL — the
+        # single strike carrying the most |γ|, the strongest pin / hedge wall).
+        net_by_strike = dict(zip(strikes, net_gex))
+        call_by_strike = dict(zip(strikes, call_gex))
+        put_by_strike = dict(zip(strikes, put_gex))
+
+        def _mag(level, table):
+            return round(float(table.get(level, 0.0)), 1) if level is not None else None
+
+        call_wall_val = _mag(call_wall, call_by_strike)
+        put_wall_val = _mag(put_wall, put_by_strike)
+        hvl = max(strikes, key=lambda k: abs(net_by_strike[k])) if strikes else None
+        hvl_val = _mag(hvl, net_by_strike)
+
+        # Strikes to visually emphasise (outline + on-bar magnitude label).
+        emph = {s for s in (call_wall, put_wall, hvl) if s is not None}
+        EMPH_W = 2.2
+
+        def _outline(seq, levels):
+            return [EMPH_W if k in levels else 0 for k in seq]
+
+        def _labels(seq, table, levels):
+            # Compact $M magnitude printed only on the emphasised bars.
+            return [f"{table[k]:+.0f}" if k in levels else "" for k in seq]
+
+        # Map the precise levels onto their $5 bins for the binned views.
+        def _to_bin(level):
+            return round(level / 5.0) * 5 if level is not None else None
+        cw_b, pw_b, hvl_b = _to_bin(call_wall), _to_bin(put_wall), _to_bin(hvl)
+        emph_b = {s for s in (cw_b, pw_b, hvl_b) if s is not None}
+        bin_net_by_strike = dict(zip(bin_strikes, bin_net))
+        bin_call_by_strike = dict(zip(bin_strikes, bin_call))
+        bin_put_by_strike = dict(zip(bin_strikes, bin_put))
+
+        # Symmetric, locked axes so bar proportions reflect real positioning
+        # shifts rather than Plotly auto-scaling one side independently.
+        bar_max = max([abs(v) for v in call_gex + put_gex + net_gex
+                       + bin_call + bin_put + bin_net] or [1.0]) * 1.12
+        cum_max = max([abs(v) for v in cum + bin_cum] or [1.0]) * 1.08
+        net_color     = ['#10b981' if v >= 0 else '#f43f5e' for v in net_gex]
+        bin_net_color = ['#10b981' if v >= 0 else '#f43f5e' for v in bin_net]
+        EMERALD_LINE, ROSE_LINE = '#047857', '#9f1239'
+
+        fig = go.Figure()
+
+        # Regime shading: above the zero-gamma flip dealers are net-long gamma
+        # (vol-dampening, mean-reverting → faint green); below it net-short
+        # (vol-expanding, trend-amplifying → faint red). The single biggest
+        # "is price above or below the trigger" read, shown as a backdrop.
+        y_lo, y_hi = min(strikes), max(strikes)
+        pad_y = (y_hi - y_lo) * 0.02 or 1
+        if gamma_flip is not None and y_lo < gamma_flip < y_hi:
+            fig.add_hrect(y0=gamma_flip, y1=y_hi + pad_y, fillcolor='rgba(16,185,129,0.07)',
+                          line_width=0, layer='below')
+            fig.add_hrect(y0=y_lo - pad_y, y1=gamma_flip, fillcolor='rgba(244,63,94,0.07)',
+                          line_width=0, layer='below')
+
+        # Trace order is load-bearing — the toggle buttons index into it below.
+        # 0 call·raw  1 put·raw  2 net·raw  3 cum·raw
+        fig.add_trace(go.Bar(y=strikes, x=call_gex, orientation='h', name='Call GEX',
+                             marker_color='#10b981',
+                             marker_line=dict(color=EMERALD_LINE, width=_outline(strikes, emph)),
+                             hovertemplate='Strike $%{y}<br>Call γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Bar(y=strikes, x=put_gex, orientation='h', name='Put GEX',
+                             marker_color='#f43f5e',
+                             marker_line=dict(color=ROSE_LINE, width=_outline(strikes, emph)),
+                             hovertemplate='Strike $%{y}<br>Put γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Bar(y=strikes, x=net_gex, orientation='h', name='Net GEX',
+                             marker_color=net_color,
+                             marker_line=dict(color='rgba(24,24,27,0.55)', width=_outline(strikes, emph)),
+                             text=_labels(strikes, net_by_strike, emph),
+                             textposition='outside', textfont=dict(size=9),
+                             cliponaxis=False,
+                             hovertemplate='Strike $%{y}<br>Net γ %{x:.1f} $M<extra></extra>',
+                             visible=True))
+        fig.add_trace(go.Scatter(y=strikes, x=cum, mode='lines', name='Cumulative net γ',
+                             xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             hovertemplate='Strike $%{y}<br>Cumulative %{x:.1f} $M<extra></extra>',
+                             visible=True))
+        # 4 call·$5  5 put·$5  6 net·$5  7 cum·$5
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_call, orientation='h', name='Call GEX',
+                             marker_color='#10b981',
+                             marker_line=dict(color=EMERALD_LINE, width=_outline(bin_strikes, emph_b)),
+                             hovertemplate='Strike ~$%{y}<br>Call γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_put, orientation='h', name='Put GEX',
+                             marker_color='#f43f5e',
+                             marker_line=dict(color=ROSE_LINE, width=_outline(bin_strikes, emph_b)),
+                             hovertemplate='Strike ~$%{y}<br>Put γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Bar(y=bin_strikes, x=bin_net, orientation='h', name='Net GEX',
+                             marker_color=bin_net_color,
+                             marker_line=dict(color='rgba(24,24,27,0.55)', width=_outline(bin_strikes, emph_b)),
+                             text=_labels(bin_strikes, bin_net_by_strike, emph_b),
+                             textposition='outside', textfont=dict(size=9),
+                             cliponaxis=False,
+                             hovertemplate='Strike ~$%{y}<br>Net γ %{x:.1f} $M<extra></extra>',
+                             visible=False))
+        fig.add_trace(go.Scatter(y=bin_strikes, x=bin_cum, mode='lines', name='Cumulative net γ',
+                             xaxis='x2', line=dict(color='#6366f1', width=2, shape='spline'),
+                             hovertemplate='Strike ~$%{y}<br>Cumulative %{x:.1f} $M<extra></extra>',
+                             visible=False))
+
+        # --- Labeled key levels (the lines a trader reads off) ----------------
+        # Spread the annotations to opposite corners so they don't collide.
+        fig.add_hline(y=current_price, line_color='#f59e0b', line_width=2,
+                      annotation_text=f'Spot ${current_price:.2f}',
+                      annotation_position='top right',
+                      annotation_font=dict(color='#f59e0b', size=11))
+        if gamma_flip is not None:
+            fig.add_hline(y=gamma_flip, line_color='#7c3aed', line_width=1.8, line_dash='dash',
+                          annotation_text=f'Zero-Gamma ${gamma_flip:g}',
+                          annotation_position='bottom right',
+                          annotation_font=dict(color='#7c3aed', size=10))
+        if call_wall is not None:
+            fig.add_hline(y=call_wall, line_color='#10b981', line_width=1.4, line_dash='dot',
+                          annotation_text=f'Call Wall ${call_wall:g} · {call_wall_val} $M',
+                          annotation_position='top left',
+                          annotation_font=dict(color='#059669', size=10))
+        if put_wall is not None:
+            fig.add_hline(y=put_wall, line_color='#f43f5e', line_width=1.4, line_dash='dot',
+                          annotation_text=f'Put Wall ${put_wall:g} · {put_wall_val} $M',
+                          annotation_position='bottom left',
+                          annotation_font=dict(color='#e11d48', size=10))
+
+        def _vis(shown):
+            return [i in shown for i in range(8)]
+        buttons = [
+            dict(label='Net',             method='update', args=[{'visible': _vis({2, 3})}]),
+            dict(label='Call / Put',      method='update', args=[{'visible': _vis({0, 1, 3})}]),
+            dict(label='Net · $5',        method='update', args=[{'visible': _vis({6, 7})}]),
+            dict(label='Call / Put · $5', method='update', args=[{'visible': _vis({4, 5, 7})}]),
+        ]
+
+        fig.update_layout(
+            barmode='relative',
+            xaxis=dict(title='Gamma Exposure  (← short γ · $M per 1% move · long γ →)',
+                       range=[-bar_max, bar_max],
+                       zeroline=True, zerolinewidth=1.5, zerolinecolor='rgba(120,120,120,0.55)'),
+            xaxis2=dict(overlaying='x', side='top', range=[-cum_max, cum_max],
+                        showgrid=False, zeroline=False, tickfont=dict(color='#6366f1', size=9),
+                        title=dict(text='cumulative', font=dict(color='#6366f1', size=9))),
+            yaxis=dict(title='Strike ($)', tickformat='$,.0f'),
+            template='plotly_white',
+            height=520,
+            margin=dict(l=64, r=30, t=50, b=84),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(orientation='h', xanchor='center', x=0.5, yanchor='top', y=-0.16),
+            bargap=0.18,
+            uniformtext=dict(mode='hide', minsize=8),
+            updatemenus=[dict(type='dropdown', direction='down', x=0, y=1.13,
+                              xanchor='left', yanchor='bottom', showactive=True,
+                              pad=dict(t=2, b=2), font=dict(size=10), buttons=buttons)],
+        )
+        return {
+            'chart': fig.to_html(full_html=False, include_plotlyjs=False),
+            'stats': {
+                'total_gex': round(total_gex, 1),
+                'regime': 'positive' if total_gex >= 0 else 'negative',
+                'call_wall': call_wall,
+                'call_wall_val': call_wall_val,
+                'put_wall': put_wall,
+                'put_wall_val': put_wall_val,
+                'gamma_flip': gamma_flip,
+                'hvl': hvl,
+                'hvl_val': hvl_val,
+                'spot': round(float(current_price), 2),
+                'top_nodes': top_nodes,
+                'dte_range': f"{selected[0][2]}–{selected[-1][2]}d",
+                'n_expirations': len(selected),
+            },
+        }
+    except Exception as e:
+        print(f"GEX profile failed for {ticker}: {e}")
         return None
 
 
@@ -1170,7 +1516,7 @@ def compute_analytics(ticker: str) -> dict | None:
         """Compute forward price estimate at horizon_days using Monte Carlo GBM.
         Returns: (median, p5, p25, p75, p95, prob_gain, prob_up20, prob_dn20)"""
         rng = np.random.default_rng(seed)
-        shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon_days))
+        shocks = rng.normal(mu, sigma, size=(n_sims, horizon_days))
         paths = current * np.exp(np.cumsum(shocks, axis=1))
         terminal = paths[:, -1]
         return {
@@ -1202,7 +1548,7 @@ def compute_analytics(ticker: str) -> dict | None:
         horizon = 252
         n_sims = 1000
         rng = np.random.default_rng(42)
-        shocks = rng.normal(mu - 0.5 * sigma ** 2, sigma, size=(n_sims, horizon))
+        shocks = rng.normal(mu, sigma, size=(n_sims, horizon))
         paths = current_price * np.exp(np.cumsum(shocks, axis=1))
         paths = np.hstack([np.full((n_sims, 1), current_price), paths])
 
@@ -1304,6 +1650,11 @@ def analytics_page():
     # Attach options smile
     data['charts']['options_smile'] = get_options_smile(ticker, data['current_price'])
 
+    # Attach dealer Gamma Exposure (GEX) profile
+    gex = get_gex_profile(ticker, data['current_price'])
+    data['charts']['gex'] = gex['chart'] if gex else None
+    data['gex'] = gex['stats'] if gex else None
+
     # Attach insider chart (needs price df)
     price_df = get_or_fetch_prices(ticker)
     if price_df is not None:
@@ -1312,6 +1663,17 @@ def analytics_page():
 
     # Attach analyst price target
     data['charts']['price_target'] = get_price_target_chart(ticker, data['current_price'])
+
+    # Machine-learning Buy/Hold/Sell signal (None until a model is trained)
+    data['ml'] = ml.predict(ticker)
+
+    # AI analyst report — reads everything above, including the ML signal
+    ai_report_html = ai.generate_report(ticker, data)
+    data['ai_report'] = ai_report_html
+    if ai_report_html:
+        data['ai_sections'] = ai.parse_html_sections(ai_report_html)
+    else:
+        data['ai_sections'] = None
 
     return render_template('analytics.html', data=data, ticker=ticker)
 
@@ -1447,6 +1809,1021 @@ def positioning_api(ticker):
     data['insider'].pop('chart', None)
     data['institutional'].pop('chart', None)
     return jsonify(data)
+
+
+def normal_cdf(x):
+    """Cumulative distribution function of standard normal distribution."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def normal_pdf(x):
+    """Probability density function of standard normal distribution."""
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
+def calculate_greeks(s, k, t, v, r=0.045):
+    """Calculate Black-Scholes option pricing and greeks."""
+    if t <= 0:
+        t = 1e-5
+    if v <= 0:
+        v = 1e-5
+    try:
+        d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
+        d2 = d1 - v * math.sqrt(t)
+        
+        pdf_d1 = normal_pdf(d1)
+        cdf_d1 = normal_cdf(d1)
+        cdf_d2 = normal_cdf(d2)
+        
+        cdf_minus_d1 = normal_cdf(-d1)
+        cdf_minus_d2 = normal_cdf(-d2)
+        
+        # Call Greeks
+        call_delta = cdf_d1
+        call_theta = (-(s * pdf_d1 * v) / (2 * math.sqrt(t)) - r * k * math.exp(-r * t) * cdf_d2) / 365.0
+        call_rho = (k * t * math.exp(-r * t) * cdf_d2) / 100.0
+        
+        # Put Greeks
+        put_delta = cdf_d1 - 1.0
+        put_theta = (-(s * pdf_d1 * v) / (2 * math.sqrt(t)) + r * k * math.exp(-r * t) * cdf_minus_d2) / 365.0
+        put_rho = (-k * t * math.exp(-r * t) * cdf_minus_d2) / 100.0
+        
+        # Common Greeks
+        gamma = pdf_d1 / (s * v * math.sqrt(t))
+        vega = (s * math.sqrt(t) * pdf_d1) / 100.0
+        
+        return {
+            'call_delta': round(call_delta, 4),
+            'call_theta': round(call_theta, 4),
+            'call_rho': round(call_rho, 4),
+            'put_delta': round(put_delta, 4),
+            'put_theta': round(put_theta, 4),
+            'put_rho': round(put_rho, 4),
+            'gamma': round(gamma, 4),
+            'vega': round(vega, 4),
+        }
+    except Exception as e:
+        print(f"Error calculating greeks: {e}")
+        return None
+
+
+def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
+    """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price."""
+    try:
+        stock = yf.Ticker(ticker.upper())
+        expirations = stock.options
+        if not expirations:
+            return None
+        
+        if not expiration_date or expiration_date not in expirations:
+            expiration_date = expirations[0]
+            
+        chain = stock.option_chain(expiration_date)
+        calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+        puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+        
+        # Determine spot price
+        hist = stock.history(period="1d")
+        if hist.empty:
+            df = get_or_fetch_prices(ticker)
+            if df is not None and not df.empty:
+                spot_price = float(df['close'].iloc[-1])
+            else:
+                spot_price = None
+        else:
+            spot_price = float(hist['Close'].iloc[-1])
+            
+        if not spot_price:
+            return None
+            
+        exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
+        today = datetime.now()
+        days_to_exp = (exp_dt - today).days + 1
+        t_years = max(1e-5, days_to_exp / 365.0)
+        
+        lower_bound = spot_price * 0.70
+        upper_bound = spot_price * 1.30
+        
+        call_strikes = calls['strike'].tolist() if not calls.empty else []
+        put_strikes = puts['strike'].tolist() if not puts.empty else []
+        all_strikes = sorted(list(set(call_strikes + put_strikes)))
+        filtered_strikes = [s for s in all_strikes if lower_bound <= s <= upper_bound]
+        
+        call_dict = calls.set_index('strike').to_dict('index') if not calls.empty else {}
+        put_dict = puts.set_index('strike').to_dict('index') if not puts.empty else {}
+        
+        rows = []
+        for strike in filtered_strikes:
+            c_opt = call_dict.get(strike, {})
+            p_opt = put_dict.get(strike, {})
+            
+            c_iv = c_opt.get('impliedVolatility', 0)
+            p_iv = p_opt.get('impliedVolatility', 0)
+            
+            # Avoid invalid values
+            c_iv = c_iv if (c_iv and not np.isnan(c_iv)) else 0
+            p_iv = p_iv if (p_iv and not np.isnan(p_iv)) else 0
+            
+            # Cross-IV fallback: if one side is missing IV but the other side has it,
+            # use the other side's IV for Greeks computation (Put-Call parity / arbitrage alignment)
+            c_iv_calc = c_iv
+            p_iv_calc = p_iv
+            if c_iv <= 0.01 and p_iv > 0.01:
+                c_iv_calc = p_iv
+            if p_iv <= 0.01 and c_iv > 0.01:
+                p_iv_calc = c_iv
+            
+            c_greeks = calculate_greeks(spot_price, strike, t_years, c_iv_calc, rf_rate) if c_iv_calc > 0.01 else None
+            p_greeks = calculate_greeks(spot_price, strike, t_years, p_iv_calc, rf_rate) if p_iv_calc > 0.01 else None
+            
+            c_bid = c_opt.get('bid', 0)
+            c_ask = c_opt.get('ask', 0)
+            c_last = c_opt.get('lastPrice', 0)
+            
+            p_bid = p_opt.get('bid', 0)
+            p_ask = p_opt.get('ask', 0)
+            p_last = p_opt.get('lastPrice', 0)
+            
+            rows.append({
+                'strike': strike,
+                'call_bid': c_bid if not np.isnan(c_bid) else 0,
+                'call_ask': c_ask if not np.isnan(c_ask) else 0,
+                'call_last': c_last if not np.isnan(c_last) else 0,
+                'call_volume': int(c_opt.get('volume', 0)) if (c_opt.get('volume') is not None and not np.isnan(c_opt.get('volume', 0))) else 0,
+                'call_oi': int(c_opt.get('openInterest', 0)) if (c_opt.get('openInterest') is not None and not np.isnan(c_opt.get('openInterest', 0))) else 0,
+                'call_iv': round(c_iv * 100, 2),
+                'call_delta': c_greeks['call_delta'] if c_greeks else 'N/A',
+                'call_gamma': c_greeks['gamma'] if c_greeks else 'N/A',
+                'call_theta': c_greeks['call_theta'] if c_greeks else 'N/A',
+                'call_vega': c_greeks['vega'] if c_greeks else 'N/A',
+                'call_rho': c_greeks['call_rho'] if c_greeks else 'N/A',
+                'put_bid': p_bid if not np.isnan(p_bid) else 0,
+                'put_ask': p_ask if not np.isnan(p_ask) else 0,
+                'put_last': p_last if not np.isnan(p_last) else 0,
+                'put_volume': int(p_opt.get('volume', 0)) if (p_opt.get('volume') is not None and not np.isnan(p_opt.get('volume', 0))) else 0,
+                'put_oi': int(p_opt.get('openInterest', 0)) if (p_opt.get('openInterest') is not None and not np.isnan(p_opt.get('openInterest', 0))) else 0,
+                'put_iv': round(p_iv * 100, 2),
+                'put_delta': p_greeks['put_delta'] if p_greeks else 'N/A',
+                'put_gamma': p_greeks['gamma'] if p_greeks else 'N/A',
+                'put_theta': p_greeks['put_theta'] if p_greeks else 'N/A',
+                'put_vega': p_greeks['vega'] if p_greeks else 'N/A',
+                'put_rho': p_greeks['put_rho'] if p_greeks else 'N/A',
+            })
+            
+        return {
+            'ticker': ticker.upper(),
+            'expirations': expirations,
+            'selected_expiration': expiration_date,
+            'spot_price': spot_price,
+            'days_to_expiration': days_to_exp,
+            'options': rows
+        }
+    except Exception as e:
+        print(f"Error compiling options greeks: {e}")
+        return None
+
+
+@app.route('/live')
+def live_page():
+    ticker = request.args.get('ticker', '').strip().upper()
+    return render_template('live.html', ticker=ticker)
+
+
+@app.route('/api/config')
+def api_config():
+    key = providers.active_finnhub_key()
+    return jsonify({
+        "finnhub_key": key,
+        "has_finnhub": bool(key),
+    })
+
+
+# Benchmark / index ETFs — used as comparison series, never ranked as alpha names.
+MOMENTUM_BENCHMARK_ETFS = {"SPY", "QQQ", "DIA", "IWM"}
+# Risk-free assumption used for Sharpe / Sortino (annualised). Roughly the
+# average front-end T-bill yield over the sample; keeps ratios honest rather
+# than treating cash as zero-cost.
+RF_ANNUAL = 0.04
+
+
+def _perf_stats(series, rf_annual=RF_ANNUAL):
+    """Return geometric, risk-adjusted performance stats for a daily return series.
+
+    Uses CAGR (not the arithmetic-mean annualisation, which overstates returns
+    for volatile series) and the standard Sharpe (sqrt(252) * mean excess / std).
+    """
+    series = pd.Series(series).dropna()
+    n = len(series)
+    empty = {"total_return": 0.0, "annual_return": 0.0, "volatility": 0.0,
+             "sharpe": 0.0, "sortino": 0.0, "max_dd": 0.0, "calmar": 0.0}
+    if n == 0:
+        return empty
+
+    cum = (1 + series).prod() - 1
+    cagr = (1 + cum) ** (252.0 / n) - 1 if (1 + cum) > 0 else -1.0
+
+    std = series.std(ddof=1) if n > 1 else 0.0
+    ann_vol = std * np.sqrt(252)
+    rf_daily = rf_annual / 252.0
+    excess = series - rf_daily
+    sharpe = (excess.mean() / std * np.sqrt(252)) if std > 0 else 0.0
+
+    downside = excess[excess < 0]
+    dd_std = downside.std(ddof=1) if len(downside) > 1 else 0.0
+    sortino = (excess.mean() / dd_std * np.sqrt(252)) if dd_std > 0 else 0.0
+
+    cum_prod = (1 + series).cumprod()
+    running_max = cum_prod.cummax()
+    drawdown = (cum_prod - running_max) / running_max
+    max_dd = drawdown.min()
+    calmar = (cagr / abs(max_dd)) if max_dd < 0 else 0.0
+
+    return {
+        "total_return": round(cum * 100, 1),
+        "annual_return": round(cagr * 100, 1),
+        "volatility": round(ann_vol * 100, 1),
+        "sharpe": round(sharpe, 2),
+        "sortino": round(sortino, 2),
+        "max_dd": round(max_dd * 100, 1),
+        "calmar": round(calmar, 2),
+    }
+
+
+def _relative_stats(strat, bench, rf_annual=RF_ANNUAL):
+    """Benchmark-relative stats: annualised Jensen alpha, beta, info ratio, corr."""
+    df = pd.concat([pd.Series(strat), pd.Series(bench)], axis=1).dropna()
+    df.columns = ["s", "b"]
+    empty = {"alpha": 0.0, "beta": 0.0, "info_ratio": 0.0, "corr": 0.0}
+    if len(df) < 2 or df["b"].var() == 0:
+        return empty
+
+    beta = df["s"].cov(df["b"]) / df["b"].var()
+    rf_daily = rf_annual / 252.0
+    alpha_daily = (df["s"].mean() - rf_daily) - beta * (df["b"].mean() - rf_daily)
+    alpha_ann = ((1 + alpha_daily) ** 252 - 1) * 100
+
+    active = df["s"] - df["b"]
+    act_std = active.std(ddof=1)
+    info = (active.mean() / act_std * np.sqrt(252)) if act_std > 0 else 0.0
+
+    return {
+        "alpha": round(alpha_ann, 1),
+        "beta": round(beta, 2),
+        "info_ratio": round(info, 2),
+        "corr": round(df["s"].corr(df["b"]), 2),
+    }
+
+
+def compute_momentum(ticker: str) -> dict:
+    """Compute momentum scores and backtest statistics for a ticker."""
+    symbol = ticker.upper()
+    df = db.get_prices(symbol)
+    if df is None or len(df) < 273:
+        return {}
+
+    close = df['close']
+    daily_rets = close.pct_change()
+    
+    p_latest = close.iloc[-1]
+    p_21 = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
+    p_63 = close.iloc[-64] if len(close) >= 64 else close.iloc[0]
+    p_126 = close.iloc[-127] if len(close) >= 127 else close.iloc[0]
+    p_252 = close.iloc[-253] if len(close) >= 253 else close.iloc[0]
+
+    mom_12_1 = (p_21 - p_252) / p_252 if p_252 > 0 else 0.0
+    mom_6m = (p_latest - p_126) / p_126 if p_126 > 0 else 0.0
+    mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
+    mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
+
+    vol_window = daily_rets.iloc[-252:].std() * np.sqrt(252)
+    ann_vol_1y = float(vol_window) if pd.notna(vol_window) and vol_window > 0 else 0.0
+    risk_adj_mom = round(mom_12_1 / ann_vol_1y, 2) if ann_vol_1y > 0 else 0.0
+
+    # Backtest stats
+    roll_score = close.shift(21) / close.shift(252) - 1
+    signal = np.where(roll_score > 0, 1.0, 0.0)
+    signal = pd.Series(signal, index=df.index).shift(1).fillna(0.0)
+
+    trades = signal.diff().abs().fillna(0.0)
+    cost_bps = 7.5 / 1e4
+    strat_rets = signal * daily_rets - trades * cost_bps
+
+    strat_series = strat_rets.iloc[253:]
+    hold_series = daily_rets.iloc[253:]
+    trade_signals = signal.iloc[253:]
+
+    strat_stats = _perf_stats(strat_series)
+    hold_stats = _perf_stats(hold_series)
+
+    pct_invested = round(float(trade_signals.mean()) * 100, 1) if len(trade_signals) else 0.0
+
+    # Trade records
+    trade_records = []
+    in_trade = False
+    entry_idx = 0
+    backtest_start_idx = df.index.get_loc(df.index[253])
+
+    for idx in range(len(trade_signals)):
+        sig = trade_signals.iloc[idx]
+        if sig == 1 and not in_trade:
+            in_trade = True
+            entry_idx = idx
+        elif sig == 0 and in_trade:
+            in_trade = False
+            ret_val = close.iloc[backtest_start_idx + idx] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps * 2
+            trade_records.append(ret_val)
+
+    if in_trade:
+        ret_val = close.iloc[-1] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps
+        trade_records.append(ret_val)
+
+    trade_count = len(trade_records)
+    wins = [r for r in trade_records if r > 0]
+    losses = [r for r in trade_records if r <= 0]
+
+    win_rate = round(len(wins) / trade_count * 100, 1) if trade_count > 0 else 0.0
+    profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
+
+    # Relative stats
+    spy_df = get_or_fetch_prices("SPY")
+    rel = {"alpha": 0.0, "beta": 0.0, "info_ratio": 0.0, "corr": 0.0}
+    if spy_df is not None:
+        spy_rets = spy_df["close"].pct_change().dropna()
+        merged = pd.concat([strat_series, spy_rets], axis=1, join="inner")
+        if len(merged) > 30:
+            rel = _relative_stats(merged.iloc[:, 0], merged.iloc[:, 1])
+
+    return {
+        "mom_12_1": round(mom_12_1 * 100, 2),
+        "mom_6m": round(mom_6m * 100, 2),
+        "mom_3m": round(mom_3m * 100, 2),
+        "mom_1m": round(mom_1m * 100, 2),
+        "ann_vol_1y": round(ann_vol_1y * 100, 2),
+        "risk_adj_mom": risk_adj_mom,
+        "strat_stats": strat_stats,
+        "hold_stats": hold_stats,
+        "pct_invested": pct_invested,
+        "trade_count": trade_count,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "relative_spy": rel,
+    }
+
+
+@app.route('/momentum')
+def momentum_page():
+    COST_BPS = 7.5
+    tab = request.args.get('tab', 'universe')
+    symbol = request.args.get('symbol', '').upper().strip()
+    period = request.args.get('period', 'all')
+
+    # 1. Fetch all symbols in database
+    with db.get_conn() as conn:
+        rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
+    symbols = [r["symbol"] for r in rows if r["symbol"] not in MOMENTUM_BENCHMARK_ETFS]
+    if not symbols:
+        return render_template('momentum.html', data=None, error="No stock price data available in the database. Please visit the homepage and search for tickers first.")
+
+    # Sort symbols for the dropdown list
+    available_symbols = sorted(symbols)
+
+    if tab == 'ticker':
+        if not symbol:
+            # Default to the first symbol if none searched
+            symbol = available_symbols[0] if available_symbols else ""
+            
+        if symbol not in available_symbols:
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='ticker',
+                available_symbols=available_symbols,
+                searched_symbol=symbol,
+                error=f"Ticker '{symbol}' is not currently cached in the database. Please search for it on the homepage first to download its history."
+            )
+
+        # Load ticker price data
+        df = db.get_prices(symbol)
+        if df is None or len(df) < 273:  # 252 + 21
+            return render_template(
+                'momentum.html',
+                data=None,
+                tab='ticker',
+                available_symbols=available_symbols,
+                searched_symbol=symbol,
+                error=f"Ticker '{symbol}' has insufficient price history (need at least 273 trading days)."
+            )
+
+        close = df['close']
+        daily_rets = close.pct_change()
+        
+        # Momentum score metrics
+        latest_price = float(close.iloc[-1])
+        
+        # Compute scores at various horizons
+        # 12-1 momentum: 252 days ago to 21 days ago
+        p_latest = close.iloc[-1]
+        p_21 = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
+        p_63 = close.iloc[-64] if len(close) >= 64 else close.iloc[0]
+        p_126 = close.iloc[-127] if len(close) >= 127 else close.iloc[0]
+        p_252 = close.iloc[-253] if len(close) >= 253 else close.iloc[0]
+        
+        mom_12_1 = (p_21 - p_252) / p_252 if p_252 > 0 else 0.0
+        mom_6m = (p_latest - p_126) / p_126 if p_126 > 0 else 0.0
+        mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
+        mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
+
+        # Volatility-scaled (risk-adjusted) momentum: 12-1 return per unit of
+        # annualised volatility over the same window. Comparable across names.
+        vol_window = daily_rets.iloc[-252:].std() * np.sqrt(252)
+        ann_vol_1y = float(vol_window) if pd.notna(vol_window) and vol_window > 0 else 0.0
+        risk_adj_mom = round(mom_12_1 / ann_vol_1y, 2) if ann_vol_1y > 0 else 0.0
+
+        # Calculate rank in universe
+        universe_scores = {}
+        for s in symbols:
+            s_df = db.get_prices(s)
+            if s_df is not None and len(s_df) >= 253:
+                p_past_s = s_df['close'].iloc[-253]
+                p_recent_s = s_df['close'].iloc[-22]
+                if p_past_s > 0:
+                    universe_scores[s] = (p_recent_s - p_past_s) / p_past_s
+        sorted_univ = sorted(universe_scores.items(), key=lambda x: x[1], reverse=True)
+        univ_ranks = {s: idx + 1 for idx, (s, _) in enumerate(sorted_univ)}
+        rank = univ_ranks.get(symbol, len(symbols))
+
+        # Time-Series Momentum Backtest
+        # Signal: Long if 12-1 momentum is positive, cash (0) otherwise
+        # Rolling 12-1 momentum score at each day:
+        roll_score = close.shift(21) / close.shift(252) - 1
+        signal = np.where(roll_score > 0, 1.0, 0.0)
+        signal = pd.Series(signal, index=df.index).shift(1).fillna(0.0)
+        
+        trades = signal.diff().abs().fillna(0.0)
+        cost_bps = COST_BPS / 1e4
+        strat_rets = signal * daily_rets - trades * cost_bps
+        
+        # Start backtest from index 253
+        backtest_dates = df.index[253:]
+        strat_series = strat_rets.iloc[253:]
+        hold_series = daily_rets.iloc[253:]
+        trade_signals = signal.iloc[253:]
+        
+        # Apply timeframe filter if requested
+        if period != 'all':
+            latest_date = df.index[-1]
+            if period == '3y':
+                start_cutoff = latest_date - pd.DateOffset(years=3)
+            elif period == '1y':
+                start_cutoff = latest_date - pd.DateOffset(years=1)
+            elif period == '6m':
+                start_cutoff = latest_date - pd.DateOffset(months=6)
+            elif period == '3m':
+                start_cutoff = latest_date - pd.DateOffset(months=3)
+            else:
+                start_cutoff = backtest_dates[0]
+                
+            mask = backtest_dates >= start_cutoff
+            if mask.any() and mask.sum() >= 10:
+                backtest_dates = backtest_dates[mask]
+                strat_series = strat_series[mask]
+                hold_series = hold_series[mask]
+                trade_signals = trade_signals[mask]
+        
+        # Compute performance stats (geometric CAGR + standard Sharpe/Sortino)
+        strat_stats = _perf_stats(strat_series)
+        hold_stats = _perf_stats(hold_series)
+
+        # Fraction of the backtest the trend signal was actually invested.
+        pct_invested = round(float(trade_signals.mean()) * 100, 1) if len(trade_signals) else 0.0
+        
+        # Plotly chart: Strategy vs Buy & Hold
+        cum_strat = (1 + strat_series).cumprod() * 10000
+        cum_hold = (1 + hold_series).cumprod() * 10000
+
+        # Full-length Buy & Hold: spans the entire available ticker history
+        # (the strategy needs 252 days of warm-up, but Buy & Hold can start from day 1)
+        hold_full_dates = df.index
+        hold_full_rets = daily_rets.fillna(0.0)
+        if period != 'all':
+            mask_hold_full = hold_full_dates >= start_cutoff
+            if mask_hold_full.any() and mask_hold_full.sum() >= 10:
+                hold_full_dates = hold_full_dates[mask_hold_full]
+                hold_full_rets = hold_full_rets[mask_hold_full]
+        cum_hold_full = (1 + hold_full_rets).cumprod() * 10000
+        hold_full_dates_str = hold_full_dates.strftime('%Y-%m-%d').tolist()
+
+        # Convert index to string for guaranteed clean parsing in Plotly
+        backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
+        
+        trade_dates = backtest_dates
+        sig_diff = trade_signals.diff().fillna(0.0)
+        
+        # Entries: signal changes from 0 to 1
+        buys = sig_diff == 1
+        # Exits: signal changes from 1 to 0
+        sells = sig_diff == -1
+        
+        buy_dates = trade_dates[buys]
+        sell_dates = trade_dates[sells]
+        
+        # Calculate individual trade returns
+        trade_records = []
+        in_trade = False
+        entry_idx = 0
+        backtest_start_idx = df.index.get_loc(backtest_dates[0])
+        
+        for idx in range(len(trade_signals)):
+            sig = trade_signals.iloc[idx]
+            if sig == 1 and not in_trade:
+                in_trade = True
+                entry_idx = idx
+            elif sig == 0 and in_trade:
+                in_trade = False
+                ret_val = close.iloc[backtest_start_idx + idx] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps * 2
+                trade_records.append(ret_val)
+                
+        if in_trade:
+            ret_val = close.iloc[-1] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps
+            trade_records.append(ret_val)
+            
+        trade_count = len(trade_records)
+        wins = [r for r in trade_records if r > 0]
+        losses = [r for r in trade_records if r <= 0]
+        
+        win_rate = round(len(wins) / trade_count * 100, 1) if trade_count > 0 else 0.0
+        profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
+        
+        fig_perf = go.Figure()
+        fig_perf.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='Trend-Following (Long/Cash)', line=dict(color='#fbbf24', width=2), hoverlabel=dict(bgcolor='#000000', bordercolor='#fbbf24', font=dict(color='#fbbf24'))))
+        fig_perf.add_trace(go.Scatter(x=hold_full_dates_str, y=cum_hold_full.tolist(), mode='lines', name=f'Buy & Hold {symbol}', line=dict(color='#64748b', width=1.5, dash='dash')))
+        
+        # Add Buy entry markers on the performance chart
+        if not buy_dates.empty:
+            buy_dates_str = buy_dates.strftime('%Y-%m-%d').tolist()
+            buy_prices = cum_strat.loc[buy_dates].tolist()
+            fig_perf.add_trace(go.Scatter(
+                x=buy_dates_str, y=buy_prices,
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=10, color='#10b981', line=dict(width=1, color='black')),
+                name='Buy Entry'
+            ))
+            
+        # Add Sell exit markers on the performance chart
+        if not sell_dates.empty:
+            sell_dates_str = sell_dates.strftime('%Y-%m-%d').tolist()
+            sell_prices = cum_strat.loc[sell_dates].tolist()
+            fig_perf.add_trace(go.Scatter(
+                x=sell_dates_str, y=sell_prices,
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=10, color='#ef4444', line=dict(width=1, color='black')),
+                name='Sell Exit'
+            ))
+            
+        fig_perf.update_layout(
+            title=f'Trend-Following Strategy vs Buy & Hold for {symbol}',
+            xaxis_title='Date',
+            yaxis_title='Portfolio Value ($)',
+            template='plotly_white',
+            height=350,
+            margin=dict(l=50, r=30, t=60, b=80),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5),
+            font=dict(family='Inter, sans-serif')
+        )
+        perf_chart_html = fig_perf.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Plotly chart: Drawdowns comparison
+        dd_strat = (cum_strat - cum_strat.cummax()) / cum_strat.cummax() * 100
+        dd_hold = (cum_hold - cum_hold.cummax()) / cum_hold.cummax() * 100
+        
+        fig_dd = go.Figure()
+        fig_dd.add_trace(go.Scatter(x=backtest_dates_str, y=dd_strat.tolist(), mode='lines', name='Trend-Following DD', line=dict(color='#fbbf24', width=1.5), fill='tozeroy', fillcolor='rgba(251,191,36,0.1)'))
+        fig_dd.add_trace(go.Scatter(x=backtest_dates_str, y=dd_hold.tolist(), mode='lines', name=f'{symbol} DD', line=dict(color='#ef4444', width=1, dash='dash'), fill='tozeroy', fillcolor='rgba(239,68,68,0.15)'))
+        
+        fig_dd.update_layout(
+            title='Drawdown Comparison (%)',
+            xaxis_title='Date',
+            yaxis_title='Drawdown (%)',
+            template='plotly_white',
+            height=250,
+            margin=dict(l=50, r=30, t=60, b=80),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='top', y=-0.22, xanchor='center', x=0.5),
+            font=dict(family='Inter, sans-serif')
+        )
+        dd_chart_html = fig_dd.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Plotly chart: Rolling 12-1 Momentum Score
+        valid_score = roll_score.iloc[253:] * 100
+        roll_dates = df.index[253:]
+        if period != 'all':
+            mask_roll = roll_dates >= start_cutoff
+            if mask_roll.any():
+                roll_dates = roll_dates[mask_roll]
+                valid_score = valid_score[mask_roll]
+        
+        fig_roll = go.Figure()
+        fig_roll.add_trace(go.Scatter(x=roll_dates.strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
+        fig_roll.add_hline(
+            y=0,
+            line_dash='dash',
+            line_color='#ef4444',
+            line_width=1,
+            annotation_text="Zero Threshold (Trend Switch)",
+            annotation_position="bottom right",
+            annotation_font=dict(size=10, color='#71717a')
+        )
+        
+        fig_roll.update_layout(
+            title=f'Rolling 12-1 Momentum Score (%) for {symbol}',
+            xaxis_title='Date',
+            yaxis_title='Momentum Score (%)',
+            template='plotly_white',
+            height=280,
+            margin=dict(l=50, r=30, t=50, b=50),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            showlegend=False,
+            font=dict(family='Inter, sans-serif')
+        )
+        roll_chart_html = fig_roll.to_html(full_html=False, include_plotlyjs=False)
+        
+        # Determine current trend state
+        current_score = roll_score.iloc[-1]
+        trend_state = "BULLISH (Long)" if current_score > 0 else "BEARISH (Flat/Cash)"
+        trend_color = "text-emerald-500" if current_score > 0 else "text-rose-500"
+        
+        data = {
+            "symbol": symbol,
+            "latest_price": latest_price,
+            "mom_12_1": round(mom_12_1 * 100, 2),
+            "mom_6m": round(mom_6m * 100, 2),
+            "mom_3m": round(mom_3m * 100, 2),
+            "mom_1m": round(mom_1m * 100, 2),
+            "rank": rank,
+            "total_rank_count": len(universe_scores),
+            "trend_state": trend_state,
+            "trend_color": trend_color,
+            "strat_stats": strat_stats,
+            "hold_stats": hold_stats,
+            "perf_chart_html": perf_chart_html,
+            "dd_chart_html": dd_chart_html,
+            "roll_chart_html": roll_chart_html,
+            "trade_count": trade_count,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "risk_adj_mom": risk_adj_mom,
+            "ann_vol_1y": round(ann_vol_1y * 100, 1),
+            "pct_invested": pct_invested,
+            "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
+            "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+        }
+
+        return render_template(
+            'momentum.html',
+            data=data,
+            tab='ticker',
+            header_badge=f"{symbol} · Rank #{rank} of {len(universe_scores)}",
+            available_symbols=available_symbols,
+            searched_symbol=symbol,
+            period=period,
+            error=None
+        )
+
+    # ELSE: Tab == 'universe'
+    # 2. Load close prices for these symbols
+    prices = {}
+    for t in symbols + ["SPY", "QQQ"]:
+        df = db.get_prices(t)
+        if df is not None:
+            prices[t] = df["close"]
+    
+    if not prices:
+        return render_template('momentum.html', data=None, error="Failed to load price data.")
+
+    price_df = pd.DataFrame(prices)
+    
+    # 3. Calculate 12-1 momentum scores for active tickers
+    momentum_lookback = 252
+    exclude_days = 21
+    
+    if len(price_df) < momentum_lookback + 2:
+        return render_template('momentum.html', data=None, error=f"Insufficient history in database. Need at least {momentum_lookback} daily bars.")
+        
+    daily_rets = price_df.pct_change()
+
+    scores = {}
+    vols = {}
+    latest_idx = len(price_df) - 1
+    recent_idx = latest_idx - exclude_days
+    past_idx = latest_idx - momentum_lookback
+
+    for t in symbols:
+        if t in price_df.columns:
+            p_past = price_df[t].iloc[past_idx]
+            p_recent = price_df[t].iloc[recent_idx]
+            if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
+                scores[t] = (p_recent - p_past) / p_past
+                v = daily_rets[t].iloc[-momentum_lookback:].std() * np.sqrt(252)
+                vols[t] = float(v) if pd.notna(v) and v > 0 else 0.0
+
+    # Sort symbols by momentum score
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    leaderboard = [{
+        "symbol": t,
+        "score": round(score * 100, 2),
+        "vol": round(vols.get(t, 0.0) * 100, 1),
+        "risk_adj": round(score / vols[t], 2) if vols.get(t, 0.0) > 0 else 0.0,
+        "rank": idx + 1,
+    } for idx, (t, score) in enumerate(sorted_scores)]
+
+    top_5 = [t for t, _ in sorted_scores[:5]]
+    
+    # 4. Backtest Momentum Strategy rebalanced monthly (equal-weight top 5)
+    rebalance_freq = 21
+    start_idx = momentum_lookback + 1
+
+    portfolio_returns = []
+    active_portfolio = []
+    prev_weights = {}
+    total_turnover = 0.0
+    rebalance_count = 0
+    backtest_dates = price_df.index[start_idx:]
+
+    for i in range(start_idx, len(price_df)):
+        is_rebalance = (i - start_idx) % rebalance_freq == 0
+        cost_today = 0.0
+        if is_rebalance:
+            step_scores = {}
+            for t in symbols:
+                if t in price_df.columns:
+                    p_past = price_df[t].iloc[i - momentum_lookback]
+                    p_recent = price_df[t].iloc[i - exclude_days]
+                    if pd.notna(p_past) and pd.notna(p_recent) and p_past > 0:
+                        step_scores[t] = (p_recent - p_past) / p_past
+            sorted_step = sorted(step_scores.items(), key=lambda x: x[1], reverse=True)
+            active_portfolio = [t for t, score in sorted_step[:5] if np.isfinite(score)]
+
+            # Transaction cost scaled by actual turnover (sum of absolute weight
+            # changes), not a flat charge that assumes the book turns over fully.
+            new_weights = {t: 1.0 / len(active_portfolio) for t in active_portfolio} if active_portfolio else {}
+            names = set(new_weights) | set(prev_weights)
+            turnover = sum(abs(new_weights.get(t, 0.0) - prev_weights.get(t, 0.0)) for t in names)
+            if i > start_idx:
+                # One-way turnover = half the gross weight change; round-trip cost
+                # is charged on the notional traded.
+                cost_today = (turnover / 2.0) * (COST_BPS / 1e4)
+                total_turnover += turnover / 2.0
+                rebalance_count += 1
+            prev_weights = new_weights
+
+        if active_portfolio:
+            daily_ret = daily_rets[active_portfolio].iloc[i].mean()
+        else:
+            daily_ret = 0.0
+
+        daily_ret -= cost_today
+        portfolio_returns.append(daily_ret)
+
+    strat_series = pd.Series(portfolio_returns, index=backtest_dates)
+    spy_series = daily_rets["SPY"].loc[backtest_dates] if "SPY" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
+    qqq_series = daily_rets["QQQ"].loc[backtest_dates] if "QQQ" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
+    
+    # Apply timeframe filter if requested
+    if period != 'all':
+        latest_date = price_df.index[-1]
+        if period == '3y':
+            start_cutoff = latest_date - pd.DateOffset(years=3)
+        elif period == '1y':
+            start_cutoff = latest_date - pd.DateOffset(years=1)
+        elif period == '6m':
+            start_cutoff = latest_date - pd.DateOffset(months=6)
+        elif period == '3m':
+            start_cutoff = latest_date - pd.DateOffset(months=3)
+        else:
+            start_cutoff = backtest_dates[0]
+            
+        mask = backtest_dates >= start_cutoff
+        if mask.any() and mask.sum() >= 10:
+            backtest_dates = backtest_dates[mask]
+            strat_series = strat_series[mask]
+            if "SPY" in daily_rets.columns:
+                spy_series = spy_series[mask]
+            if "QQQ" in daily_rets.columns:
+                qqq_series = qqq_series[mask]
+    
+    # Compute stats (geometric CAGR + standard Sharpe/Sortino) and the
+    # benchmark-relative alpha/beta/information ratio that actually tell you
+    # whether the strategy added value versus just owning the index.
+    strat_stats = _perf_stats(strat_series)
+    spy_stats = _perf_stats(spy_series)
+    qqq_stats = _perf_stats(qqq_series)
+    rel_spy = _relative_stats(strat_series, spy_series)
+    
+    # Create interactive plot
+    cum_strat = (1 + strat_series).cumprod() * 10000
+    cum_spy = (1 + spy_series).cumprod() * 10000
+    cum_qqq = (1 + qqq_series).cumprod() * 10000
+    
+    # Convert index to string for guaranteed clean parsing in Plotly
+    backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='12-1 Momentum Strategy (Top 5)', line=dict(color='#fbbf24', width=2)))
+    if "SPY" in daily_rets.columns:
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_spy.tolist(), mode='lines', name='SPY (S&P 500) Benchmark', line=dict(color='#64748b', width=1.5, dash='dash')))
+    if "QQQ" in daily_rets.columns:
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_qqq.tolist(), mode='lines', name='QQQ (Nasdaq 100) Benchmark', line=dict(color='#818cf8', width=1.5, dash='dash')))
+        
+    fig.update_layout(
+        title='Growth of $10,000 Investment',
+        xaxis_title='Date',
+        yaxis_title='Portfolio Value ($)',
+        template='plotly_white',
+        height=400,
+        margin=dict(l=50, r=30, t=60, b=80),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='top', y=-0.15, xanchor='center', x=0.5),
+        font=dict(family='Inter, sans-serif')
+    )
+    chart_html = fig.to_html(full_html=False, include_plotlyjs=False)
+
+    # Average annual one-way turnover (rebalances are monthly => ~12.6/yr).
+    avg_turnover = round((total_turnover / rebalance_count) * (252.0 / rebalance_freq) * 100, 0) if rebalance_count else 0.0
+
+    # Data-driven verdict — describe what actually happened, don't assert a win.
+    excess_spy = round(strat_stats["total_return"] - spy_stats["total_return"], 1)
+    beat_spy = strat_stats["total_return"] > spy_stats["total_return"]
+    beat_qqq = strat_stats["total_return"] > qqq_stats["total_return"]
+    if beat_spy and beat_qqq:
+        verdict = "outperformed both benchmarks"
+    elif beat_spy or beat_qqq:
+        verdict = "beat the S&P 500 but trailed the Nasdaq 100" if beat_spy else "beat the Nasdaq 100 but trailed the S&P 500"
+    else:
+        verdict = "underperformed both benchmarks"
+
+    data = {
+        "leaderboard": leaderboard,
+        "top_5": top_5,
+        "strat_stats": strat_stats,
+        "spy_stats": spy_stats,
+        "qqq_stats": qqq_stats,
+        "rel_spy": rel_spy,
+        "excess_spy": excess_spy,
+        "verdict": verdict,
+        "avg_turnover": avg_turnover,
+        "rf_annual": round(RF_ANNUAL * 100, 1),
+        "chart_html": chart_html,
+        "start_date": backtest_dates[0].strftime('%Y-%m-%d'),
+        "end_date": backtest_dates[-1].strftime('%Y-%m-%d')
+    }
+
+    return render_template(
+        'momentum.html',
+        data=data,
+        tab='universe',
+        header_badge=f"Sharpe {strat_stats['sharpe']} · IR {rel_spy['info_ratio']} vs SPY",
+        available_symbols=available_symbols,
+        searched_symbol='',
+        period=period,
+        error=None
+    )
+
+
+# User-configurable provider keys. Saved server-side (SQLite) so they apply to the
+# backend Finnhub/FMP/LLM calls. Stored keys act as quota fallbacks behind the
+# built-in dev key — see providers._ordered_keys / _finnhub_get / _fmp_get and the
+# AI provider fallback in ai.py.
+SETTINGS_FIELDS = (
+    "finnhub_api_key", "fmp_api_key", "sec_user_agent",
+) + providers.AI_SETTING_KEYS
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    saved = False
+    if request.method == 'POST':
+        for field in SETTINGS_FIELDS:
+            db.set_setting(field, request.form.get(field, '').strip())
+        saved = True
+
+    current = {field: db.get_setting(field) for field in SETTINGS_FIELDS}
+    return render_template(
+        'settings.html',
+        current=current,
+        status=providers.configured(),
+        ai_providers=providers.AI_PROVIDERS,
+        saved=saved,
+    )
+
+
+@app.route('/api/options-greeks/<ticker>')
+def options_greeks_api(ticker):
+    expiration = request.args.get('expiration', '')
+    rf_rate_raw = request.args.get('rf_rate', '0.045')
+    try:
+        rf_rate = float(rf_rate_raw)
+    except ValueError:
+        rf_rate = 0.045
+        
+    data = get_options_greeks_data(ticker, expiration, rf_rate)
+    if not data:
+        return jsonify({"error": f"Could not retrieve options data for {ticker}"}), 404
+        
+    return jsonify(data)
+
+
+@app.route('/ai-summary')
+def ai_summary_page():
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return render_template('ai_summary.html', data=None, ticker='')
+
+    # Load all statistics and data points
+    analytics_data = compute_analytics(ticker)
+    if analytics_data is None:
+        return render_template('ai_summary.html', data=None, ticker=ticker,
+                               error=f"Could not retrieve data for {ticker}")
+
+    # Gather fundamentals & positioning
+    positioning_data = compute_positioning(ticker)
+    fundamentals = get_fundamentals(ticker) or {}
+
+    # Merge finnhub metrics (list of dicts) and yfinance fundamentals into a single dict
+    valuation_dict = {}
+    finnhub_val = positioning_data.get("valuation")
+    if finnhub_val and isinstance(finnhub_val, list):
+        for item in finnhub_val:
+            valuation_dict[item["label"]] = item["value"]
+    if fundamentals:
+        for k, v in fundamentals.items():
+            if k not in valuation_dict:
+                valuation_dict[k] = v
+
+    # Gather momentum data
+    momentum_data = compute_momentum(ticker)
+
+    # Gather ML signal
+    ml_signal = ml.predict(ticker)
+
+    # Gather GEX stats
+    gex_profile = get_gex_profile(ticker, analytics_data['current_price'])
+    gex_stats = gex_profile['stats'] if gex_profile else None
+
+    # Merge all stats into a single context payload
+    # Remove charts and figures so we only feed clean numbers to the LLM (and stay within limits / keep it clean)
+    payload = {
+        "ticker": ticker,
+        "current_price": analytics_data.get("current_price"),
+        "general_stats": analytics_data.get("stats"),
+        "forward_estimates": analytics_data.get("forward_estimates"),
+        "valuation": valuation_dict,
+        "recommendations": positioning_data.get("recommendations"),
+        "insider_sentiment": positioning_data.get("insider", {}).get("sentiment"),
+        "insider_transactions": positioning_data.get("insider", {}).get("transactions"),
+        "sec_filings": positioning_data.get("insider", {}).get("sec_filings"),
+        "institutional_holders": positioning_data.get("institutional", {}).get("holders"),
+        "momentum": {
+            "mom_12_1_pct": momentum_data.get("mom_12_1"),
+            "mom_6m_pct": momentum_data.get("mom_6m"),
+            "mom_3m_pct": momentum_data.get("mom_3m"),
+            "mom_1m_pct": momentum_data.get("mom_1m"),
+            "ann_vol_1y_pct": momentum_data.get("ann_vol_1y"),
+            "risk_adjusted_mom_score": momentum_data.get("risk_adj_mom"),
+            "strategy_annual_return_pct": momentum_data.get("strat_stats", {}).get("annual_return"),
+            "strategy_sharpe": momentum_data.get("strat_stats", {}).get("sharpe"),
+            "strategy_max_dd_pct": momentum_data.get("strat_stats", {}).get("max_dd"),
+            "hold_annual_return_pct": momentum_data.get("hold_stats", {}).get("annual_return"),
+            "hold_sharpe": momentum_data.get("hold_stats", {}).get("sharpe"),
+            "hold_max_dd_pct": momentum_data.get("hold_stats", {}).get("max_dd"),
+            "percent_invested": momentum_data.get("pct_invested"),
+            "trade_count": momentum_data.get("trade_count"),
+            "win_rate_pct": momentum_data.get("win_rate"),
+            "profit_factor": momentum_data.get("profit_factor"),
+            "relative_to_spy": momentum_data.get("relative_spy"),
+        },
+        "ml_signal": ml_signal,
+        "dealer_gex": gex_stats,
+    }
+
+    # Generate or fetch the comprehensive strategy report
+    comprehensive_report = ai.generate_comprehensive_report(ticker, payload)
+
+    # We also pass the clean payload to the page so it can render the raw tables as well!
+    return render_template(
+        'ai_summary.html',
+        ticker=ticker,
+        data=payload,
+        report=comprehensive_report,
+        configured=bool(providers.ai_providers()),
+    )
 
 
 if __name__ == '__main__':

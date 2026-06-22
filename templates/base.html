@@ -145,6 +145,26 @@
         position: relative;
         border-radius: calc(0.75rem - 1px);
       }
+
+      /* Make text colors brighter/white in dark mode for accessibility and high contrast */
+      .dark body {
+        color: #ffffff;
+      }
+      .dark .dark\:text-zinc-50 { color: #ffffff !important; }
+      .dark .dark\:text-zinc-100 { color: #ffffff !important; }
+      .dark .dark\:text-zinc-200 { color: #fafafa !important; }
+      .dark .dark\:text-zinc-300 { color: #f4f4f5 !important; }
+      .dark .dark\:text-zinc-400 { color: #e4e4e7 !important; }
+      .dark .dark\:text-zinc-500 { color: #d4d4d8 !important; }
+      .dark .dark\:text-zinc-600 { color: #a1a1aa !important; }
+      .dark .dark\:text-zinc-700 { color: #71717a !important; }
+
+      /* Muted utilities written without a dark: variant (e.g. plain text-zinc-400
+         on descriptions/captions) — force them white in dark mode too. */
+      .dark .text-zinc-300,
+      .dark .text-zinc-400,
+      .dark .text-zinc-500,
+      .dark .text-zinc-600 { color: #ffffff !important; }
     </style>
     <script>
       // Initialize dark mode before page load to prevent flash
@@ -161,7 +181,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center gap-6">
-            <a href="/" class="inline-flex items-center gap-2.5 group">
+            <a id="brand-link" href="/" class="inline-flex items-center gap-2.5 group">
               <svg class="w-4 h-4 text-amber-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <rect x="1" y="9" width="3" height="6" rx="1"/>
                 <rect x="6.5" y="5" width="3" height="10" rx="1"/>
@@ -171,8 +191,18 @@
             </a>
             <a id="nav-analytics" href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
             <a id="nav-positioning" href="/positioning" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Positioning</a>
+            <a id="nav-live" href="/live" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Live Microstructure</a>
+            <a id="nav-momentum" href="/momentum" class="text-sm text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold transition-colors">Momentum Alpha</a>
+            <a id="nav-ai-summary" href="/ai-summary" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">AI Strategy</a>
+            <a href="/glossary" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Glossary</a>
           </div>
-          <div class="flex items-center">
+          <div class="flex items-center gap-2">
+            <a href="/settings" class="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors duration-200" title="API key settings" aria-label="Settings">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </a>
             <button id="theme-toggle" class="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors duration-200">
               <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
@@ -192,7 +222,6 @@
 
     <footer class="text-center text-zinc-400 dark:text-zinc-600 pb-8 mt-12 space-y-1">
       <p class="text-xs uppercase tracking-wider">Powered by yfinance &middot; Real-time market data</p>
-      <p class="text-xs uppercase tracking-wider">Built with Cursor</p>
     </footer>
 
     <script>
@@ -236,8 +265,11 @@
         if (!ticker) return;
 
         const links = {
+          'brand-link':      '/stock?ticker=' + ticker,
           'nav-analytics':   '/analytics?ticker=' + ticker,
           'nav-positioning': '/positioning?ticker=' + ticker,
+          'nav-live':        '/live?ticker=' + ticker,
+          'nav-ai-summary':  '/ai-summary?ticker=' + ticker,
         };
         Object.entries(links).forEach(([id, href]) => {
           const el = document.getElementById(id);

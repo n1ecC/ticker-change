@@ -1,8 +1,24 @@
 {% extends "base.html" %}
+{% from "_macros.html" import metric %}
 {% block title %}Analytics — {{ ticker }}{% endblock %}
 
 {% block head_extra %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  .ai-report h3 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.9rem 0 0.3rem; color: #a1a1aa; }
+  .ai-report h3:first-child { margin-top: 0; }
+  .ai-report ul { list-style: disc; padding-left: 1.1rem; margin: 0.25rem 0; }
+  .ai-report li { margin: 0.15rem 0; }
+  .ai-report strong { color: inherit; font-weight: 600; }
+  .ai-report em { color: #71717a; }
+  
+  .ai-inline-summary p { margin-bottom: 0.5rem; }
+  .ai-inline-summary p:last-child { margin-bottom: 0; }
+  .ai-inline-summary ul { list-style: disc; padding-left: 1.1rem; margin: 0.25rem 0; }
+  .ai-inline-summary li { margin: 0.15rem 0; }
+  .ai-inline-summary strong { color: inherit; font-weight: 600; }
+  .ai-inline-summary em { color: #71717a; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -50,32 +66,44 @@
   </div>
 </div>
 
+{% if data.ai_sections and data.ai_sections.bottom_line %}
+<div class="mb-8 p-6 rounded-xl border border-amber-300/40 dark:border-amber-500/20 bg-amber-50/20 dark:bg-amber-500/5 backdrop-blur-md">
+  <div class="flex items-center gap-2 font-bold text-sm text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">
+    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+    <span>AI Summary & Bottom Line Buyer Signal</span>
+  </div>
+  <div class="ai-inline-summary text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+    {{ data.ai_sections.bottom_line | safe }}
+  </div>
+</div>
+{% endif %}
+
 <!-- Risk stat cards -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
   {% set stats = [
-    ('Annualised Vol', data.stats.annualised_vol ~ '%', ''),
-    ('Max Drawdown',   data.stats.max_drawdown ~ '%',  'text-rose-500'),
-    ('Skewness',       data.stats.skewness,             ''),
-    ('Kurtosis',       data.stats.kurtosis,             ''),
+    ('Annualised Vol', data.stats.annualised_vol ~ '%', '', 'annualised_vol'),
+    ('Max Drawdown',   data.stats.max_drawdown ~ '%',  'text-rose-500', 'max_drawdown'),
+    ('Skewness',       data.stats.skewness,             '', 'skewness'),
+    ('Kurtosis',       data.stats.kurtosis,             '', 'kurtosis'),
   ] %}
   {% if data.stats.beta is not none %}
-  {% set stats = stats + [('Beta vs SPY', data.stats.beta, '')] %}
+  {% set stats = stats + [('Beta vs SPY', data.stats.beta, '', 'beta')] %}
   {% endif %}
   {% if data.stats.var_95 is not none %}
-  {% set stats = stats + [('VaR 95% (1d)', data.stats.var_95 ~ '%', 'text-amber-500')] %}
+  {% set stats = stats + [('VaR 95% (1d)', data.stats.var_95 ~ '%', 'text-amber-500', 'var')] %}
   {% endif %}
   {% if data.stats.var_99 is not none %}
-  {% set stats = stats + [('VaR 99% (1d)', data.stats.var_99 ~ '%', 'text-rose-500')] %}
+  {% set stats = stats + [('VaR 99% (1d)', data.stats.var_99 ~ '%', 'text-rose-500', 'var')] %}
   {% endif %}
   {% set stats = stats + [
-    ('Mean Daily Ret', data.stats.mean_daily_return ~ '%', ''),
-    ('Daily Std Dev',  data.stats.daily_std ~ '%',         ''),
-    ('Data Points',    data.stats.data_points,              'text-zinc-400'),
+    ('Mean Daily Ret', data.stats.mean_daily_return ~ '%', '', none),
+    ('Daily Std Dev',  data.stats.daily_std ~ '%',         '', none),
+    ('Data Points',    data.stats.data_points,              'text-zinc-400', none),
   ] %}
 
-  {% for label, value, extra_class in stats %}
+  {% for label, value, extra_class, key in stats %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-4">
-    <p class="text-xs text-zinc-400 uppercase tracking-wider mb-1">{{ label }}</p>
+    <p class="text-xs text-zinc-400 uppercase tracking-wider mb-1">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</p>
     <p class="text-xl font-mono font-semibold {{ extra_class }}">{{ value }}</p>
   </div>
   {% endfor %}
@@ -87,19 +115,19 @@
   <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Fundamentals &amp; Valuation</h2>
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
     {% set multiples = [
-      ('Trailing P/E',  data.fundamentals.get('Trailing P/E')),
-      ('Forward P/E',   data.fundamentals.get('Forward P/E')),
-      ('EV / EBITDA',   data.fundamentals.get('EV / EBITDA')),
-      ('Price / Book',  data.fundamentals.get('Price / Book')),
-      ('EPS (TTM)',      data.fundamentals.get('EPS (TTM)')),
-      ('Short % Float', data.fundamentals.get('Short % Float')),
-      ('Short Ratio',   data.fundamentals.get('Short Ratio')),
-      ('Div Yield',     data.fundamentals.get('Dividend Yield')),
+      ('Trailing P/E',  data.fundamentals.get('Trailing P/E'), 'trailing_pe'),
+      ('Forward P/E',   data.fundamentals.get('Forward P/E'), 'forward_pe'),
+      ('EV / EBITDA',   data.fundamentals.get('EV / EBITDA'), 'ev_ebitda'),
+      ('Price / Book',  data.fundamentals.get('Price / Book'), 'price_book'),
+      ('EPS (TTM)',      data.fundamentals.get('EPS (TTM)'), none),
+      ('Short % Float', data.fundamentals.get('Short % Float'), 'short_float'),
+      ('Short Ratio',   data.fundamentals.get('Short Ratio'), 'short_ratio'),
+      ('Div Yield',     data.fundamentals.get('Dividend Yield'), 'dividend_yield'),
     ] %}
-    {% for label, val in multiples %}
+    {% for label, val, key in multiples %}
     {% if val is not none %}
     <div>
-      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">{{ label }}</p>
+      <p class="text-[11px] text-zinc-400 uppercase tracking-wider">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</p>
       <p class="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
         {% if label == 'Short % Float' or label == 'Div Yield' %}
           {{ "%.2f"|format(val * 100) }}%
@@ -125,6 +153,17 @@
     </div>
     {% endif %}
   </div>
+  {% if data.ai_sections and data.ai_sections.valuation %}
+  <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+    <div class="flex items-center gap-1.5 font-semibold text-xs text-indigo-500 dark:text-indigo-400 mb-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>AI Fundamental Analysis & Multiples Valuation</span>
+    </div>
+    <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+      {{ data.ai_sections.valuation | safe }}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -216,7 +255,7 @@
 
     {% if data.charts.beta %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Beta vs SPY</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Beta vs SPY', 'beta') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">β {{ data.stats.beta }} — each 1 % SPY move implies ~{{ data.stats.beta }}% move in {{ data.ticker }}. β > 1 = amplified market exposure.</p>
       {{ data.charts.beta | safe }}
     </div>
@@ -226,7 +265,7 @@
   <!-- Row 2: Cumulative Return vs Benchmarks (full width) -->
   {% if data.charts.cumulative_return %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Cumulative Return vs. Benchmarks</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Cumulative Return vs. Benchmarks', 'cumulative_return') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Growth of $100 from the earliest common date.
       <span class="text-amber-500 font-mono font-semibold">{{ data.ticker }}</span> vs.
@@ -241,25 +280,36 @@
   <!-- Row 3: VaR & ES (full width) -->
   {% if data.charts.var %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Value-at-Risk &amp; Expected Shortfall</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Value-at-Risk & Expected Shortfall', 'var') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Historical 1-day VaR at 95 % and 99 % confidence using a 252-day rolling window — the daily loss you would not expect to exceed on 95 %/99 % of trading days.
       ES (CVaR) is the <em>average</em> loss when you <em>do</em> breach VaR: a more conservative tail-risk metric.
     </p>
     {{ data.charts.var | safe }}
+    {% if data.ai_sections and data.ai_sections.risks %}
+    <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+      <div class="flex items-center gap-1.5 font-semibold text-xs text-rose-500 dark:text-rose-400 mb-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <span>AI Risk & Expected Tail Shortfall Assessment</span>
+      </div>
+      <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        {{ data.ai_sections.risks | safe }}
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
   <!-- Row 3: Volatility (full width) -->
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Volatility</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Volatility', 'annualised_vol') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">30-day realised volatility annualised (×√252). Spikes indicate elevated uncertainty — useful for sizing positions relative to ATR.</p>
     {{ data.charts.volatility | safe }}
   </div>
 
   <!-- Row 4: Drawdown -->
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Drawdown from Peak</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Drawdown from Peak', 'max_drawdown') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">Maximum drawdown: <span class="text-rose-400 font-mono">{{ data.stats.max_drawdown }}%</span>. Depth and duration of drawdowns reveal how difficult a recovery would be.</p>
     {{ data.charts.drawdown | safe }}
   </div>
@@ -267,7 +317,7 @@
   <!-- Row 5: Forward Estimates Summary -->
   {% if data.forward_estimates %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Forward Price Estimates</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Forward Price Estimates', 'monte_carlo') }}</h2>
     <p class="text-xs text-zinc-400 mb-4">Monte Carlo projection (1,000 paths) across multiple time horizons. Range shows 5th–95th percentile outcomes.</p>
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {% for horizon, label, color in [('3m', '3-Month', '#6366f1'), ('6m', '6-Month', '#8b5cf6'), ('1y', '1-Year', '#f59e0b')] %}
@@ -315,7 +365,7 @@
 
     {% if data.charts.volume_profile %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Volume Profile (2 yr)</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Volume Profile (2 yr)', 'poc') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">
         Cumulative volume traded at each price level over the past two years.
         High-volume nodes act as institutional support/resistance.
@@ -327,7 +377,7 @@
 
     {% if data.charts.monte_carlo %}
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Monte Carlo Forward Projection</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Monte Carlo Forward Projection', 'monte_carlo') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">
         1,000 simulated price paths over the next year (geometric Brownian motion calibrated to this stock's drift &amp; volatility). Bands show the 5–95% and 25–75% outcome ranges. Vertical lines mark 3-month &amp; 6-month milestones.
         {% if data.stats.mc_median is not none %}
@@ -345,12 +395,165 @@
 
   </div>
 
-  <!-- Row 5b: Analyst price target / options smile (when available) -->
-  {% if data.charts.price_target or data.charts.options_smile %}
+  <!-- Row 5b: Options IV smile + ML signal (paired so neither sits half-empty) -->
+  {% if data.charts.options_smile or data.ml %}
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {% if data.charts.options_smile %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.ml %}lg:col-span-2{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Options IV Smile / Skew', 'iv_smile') }}</h2>
+      <p class="text-xs text-zinc-400 mb-3">Implied volatility across strike moneyness for the nearest expirations. A steep left skew means the market prices downside risk (puts) more expensively than upside.</p>
+      {{ data.charts.options_smile | safe }}
+    </div>
+    {% endif %}
+    {% if data.ml %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.charts.options_smile %}lg:col-span-2{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">ML Signal</h2>
+      <p class="text-[11px] text-zinc-400 mb-3">Gradient-boosted model on chart-pattern features, triple-barrier labelled over a ~{{ data.ml.horizon_days }}-day horizon. Probabilistic, not advice.</p>
+      <div class="flex items-baseline gap-2 mb-3">
+        <span class="text-2xl font-bold font-mono
+          {% if data.ml.action == 'Buy' %}text-emerald-400{% elif data.ml.action == 'Sell' %}text-rose-400{% else %}text-zinc-400{% endif %}">{{ data.ml.action }}</span>
+        <span class="text-xs text-zinc-400">{{ (data.ml.confidence * 100) | round(0, 'common') }}% confidence</span>
+      </div>
+      {% for label, key, color in [('Buy','buy','bg-emerald-500'),('Hold','hold','bg-zinc-400'),('Sell','sell','bg-rose-500')] %}
+      <div class="mb-1.5">
+        <div class="flex justify-between text-[11px] font-mono text-zinc-400 mb-0.5">
+          <span>{{ label }}</span><span>{{ (data.ml.proba[key] * 100) | round(0, 'common') }}%</span>
+        </div>
+        <div class="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+          <div class="h-full {{ color }}" style="width: {{ (data.ml.proba[key] * 100) | round(1) }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if data.ml.rationale %}
+      <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <p class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Why</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed mb-2">{{ data.ml.rationale }}</p>
+        {% if data.ml.drivers %}
+        <div class="flex flex-wrap gap-1.5">
+          {% for d in data.ml.drivers %}
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"
+                title="{{ d.phrase }} · {{ d.z }}σ from typical · model weight {{ (d.weight * 100) | round(0, 'common') }}%">
+            {{ d.label }} <span class="{% if d.direction == 'high' %}text-emerald-500{% else %}text-rose-500{% endif %}">{% if d.direction == 'high' %}&uarr;{% else %}&darr;{% endif %}</span>
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if data.ai_sections and data.ai_sections.technical %}
+      <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <div class="flex items-center gap-1.5 font-semibold text-xs text-amber-500 dark:text-amber-400 mb-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          <span>AI Technical Indicators & Volatility Insight</span>
+        </div>
+        <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          {{ data.ai_sections.technical | safe }}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Row 5c: Dealer Gamma Exposure (GEX) profile -->
+  {% if data.charts.gex %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Dealer Gamma Exposure (GEX)', 'gex') }}</h2>
+    <p class="text-xs text-zinc-400 mb-3">
+      Estimated market-maker gamma at each strike across the nearest {{ data.gex.n_expirations }} expirations ({{ data.gex.dte_range }} to expiry), using the standard dealer convention (long calls <span class="text-emerald-400">+</span>, short puts <span class="text-rose-400">−</span>). Γ is computed via Black-Scholes from open interest &amp; implied volatility. Units: $M of gamma per 1% move.
+    </p>
+
+    <!-- Key levels: the strikes a desk actually trades off -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-4">
+      <div class="rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/10 px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">Spot</p>
+        <p class="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">${{ data.gex.spot }}</p>
+      </div>
+      <div class="rounded-lg border border-emerald-300/60 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Call Wall · Resistance</p>
+        <p class="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">
+          {% if data.gex.call_wall %}${{ '%g'|format(data.gex.call_wall) }} <span class="text-[10px] font-normal text-zinc-400">{{ data.gex.call_wall_val }} $M</span>{% else %}<span class="text-zinc-400">—</span>{% endif %}
+        </p>
+      </div>
+      <div class="rounded-lg border border-violet-300/60 dark:border-violet-500/30 bg-violet-50/60 dark:bg-violet-500/10 px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400">Zero-Gamma · Trigger</p>
+        <p class="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">
+          {% if data.gex.gamma_flip %}${{ '%g'|format(data.gex.gamma_flip) }}{% else %}<span class="text-zinc-400">—</span>{% endif %}
+        </p>
+      </div>
+      <div class="rounded-lg border border-rose-300/60 dark:border-rose-500/30 bg-rose-50/60 dark:bg-rose-500/10 px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-rose-600 dark:text-rose-400">Put Wall · Support</p>
+        <p class="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">
+          {% if data.gex.put_wall %}${{ '%g'|format(data.gex.put_wall) }} <span class="text-[10px] font-normal text-zinc-400">{{ data.gex.put_wall_val }} $M</span>{% else %}<span class="text-zinc-400">—</span>{% endif %}
+        </p>
+      </div>
+      <div class="rounded-lg border border-indigo-300/60 dark:border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-500/10 px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">HVL · Gamma Magnet</p>
+        <p class="font-mono text-sm font-bold text-zinc-900 dark:text-zinc-50">
+          {% if data.gex.hvl %}${{ '%g'|format(data.gex.hvl) }} <span class="text-[10px] font-normal text-zinc-400">{{ data.gex.hvl_val }} $M</span>{% else %}<span class="text-zinc-400">—</span>{% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 mb-3 text-[11px]">
+      <span class="font-semibold uppercase tracking-widest text-zinc-400">Regime</span>
+      <span class="font-mono font-semibold px-2 py-0.5 rounded-full {% if data.gex.regime == 'positive' %}bg-emerald-500/15 text-emerald-600 dark:text-emerald-400{% else %}bg-rose-500/15 text-rose-600 dark:text-rose-400{% endif %}">
+        Net {{ data.gex.regime }}-gamma · {{ data.gex.total_gex }} $M
+      </span>
+      <span class="text-zinc-400">{% if data.gex.regime == 'positive' %}vol-dampening, mean-reverting{% else %}vol-expanding, trend-amplifying{% endif %}</span>
+    </div>
+
+    {{ data.charts.gex | safe }}
+    {% if data.gex.top_nodes %}
+    <div class="mt-3 overflow-x-auto">
+      <p class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Top concentration nodes</p>
+      <table class="w-full text-[11px] font-mono">
+        <thead class="text-zinc-400">
+          <tr class="text-left">
+            <th class="py-1 pr-2 font-semibold">Strike</th>
+            <th class="py-1 px-2 text-right font-semibold">Net GEX ($M)</th>
+            <th class="py-1 px-2 text-right font-semibold">% of Σ|γ|</th>
+            <th class="py-1 pl-2 font-semibold">Hedge type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for n in data.gex.top_nodes %}
+          <tr class="border-t border-zinc-100 dark:border-zinc-800">
+            <td class="py-1 pr-2 text-zinc-700 dark:text-zinc-200">${{ '%.2f'|format(n.strike) }}</td>
+            <td class="py-1 px-2 text-right {% if n.net >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(n.net) }}</td>
+            <td class="py-1 px-2 text-right text-zinc-500 dark:text-zinc-300">{{ n.pct }}%</td>
+            <td class="py-1 pl-2 {% if n.net >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ n.kind }} <span class="text-zinc-500">({{ n.side }} wall)</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    <p class="text-[11px] text-zinc-400 mt-2 leading-relaxed">
+      <span class="font-semibold">Reading it:</span> Above the γ-flip, dealers are net-long gamma and hedge <em>against</em> moves (vol-dampening, mean-reverting). Below it they are net-short gamma and hedge <em>with</em> moves (trend-amplifying). The call wall often caps rallies; the put wall often cushions selloffs. The dropdown switches between back-to-back Call/Put bars and a single <span class="text-emerald-400">Net</span> bar, and toggles $5 strike binning; the <span class="text-indigo-400">cumulative</span> line (top axis) crosses zero at the γ-flip and steepens where gamma is most concentrated. Naive end-of-day model on delayed yfinance OI — directional, not an institutional feed.
+    </p>
+    {% if data.ai_sections and data.ai_sections.options %}
+    <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+      <div class="flex items-center gap-1.5 font-semibold text-xs text-emerald-500 dark:text-emerald-400 mb-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>AI Options Positioning & Market Maker Hedging Signal</span>
+      </div>
+      <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        {{ data.ai_sections.options | safe }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Row 5d: Analyst price target + AI analyst report -->
+  {% if data.charts.price_target or data.ai_report %}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     {% if data.charts.price_target %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Analyst Price Target</h2>
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if not data.ai_report %}lg:col-span-3{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Analyst Price Target', 'price_target') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">
         Wall Street consensus — low, mean, and high 12-month price targets from covering analysts.
         <span class="text-amber-500 font-mono">◆</span> mean target &nbsp;
@@ -359,11 +562,12 @@
       {{ data.charts.price_target | safe }}
     </div>
     {% endif %}
-    {% if data.charts.options_smile %}
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Options IV Smile / Skew</h2>
-      <p class="text-xs text-zinc-400 mb-3">Implied volatility across strike moneyness for the nearest expirations. A steep left skew means the market prices downside risk (puts) more expensively than upside.</p>
-      {{ data.charts.options_smile | safe }}
+    {% if data.ai_report %}
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 {% if data.charts.price_target %}lg:col-span-2{% else %}lg:col-span-3{% endif %}">
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2">AI Analyst Report</h2>
+      <div class="ai-report text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed space-y-2">
+        {{ data.ai_report | safe }}
+      </div>
     </div>
     {% endif %}
   </div>
@@ -372,13 +576,13 @@
   <!-- Row 6: Sharpe + Seasonality -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Rolling Sharpe Ratio</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Rolling Sharpe Ratio', 'sharpe') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">1-year rolling Sharpe (risk-free ≈ 0). Above 1 is generally considered strong risk-adjusted return.</p>
       {{ data.charts.sharpe | safe }}
     </div>
 
     <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Seasonality</h2>
+      <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Seasonality', 'seasonality') }}</h2>
       <p class="text-xs text-zinc-400 mb-3">Average daily return by calendar month over the full history. Identifies recurring seasonal patterns and the strongest/weakest calendar periods.</p>
       {{ data.charts.seasonality | safe }}
     </div>
@@ -387,7 +591,7 @@
   <!-- Row 7: Insider Transactions (full width) -->
   {% if data.charts.insider %}
   <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">Insider Transaction Activity</h2>
+    <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1">{{ metric('Insider Transaction Activity', 'insider_transactions') }}</h2>
     <p class="text-xs text-zinc-400 mb-3">
       Monthly net shares bought (green) or sold (red) by company insiders, overlaid on price.
       Sustained net buying from insiders — especially executives — is a historically bullish signal.

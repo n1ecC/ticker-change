@@ -1,13 +1,14 @@
 {% extends "base.html" %}
+{% from "_macros.html" import metric %}
 {% block title %}Positioning — {{ ticker }}{% endblock %}
 
 {% block head_extra %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 {% endblock %}
 
-{% macro panel_header(title, source) %}
+{% macro panel_header(title, source, key='') %}
 <div class="flex items-baseline justify-between mb-4">
-  <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">{{ title }}</h2>
+  <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">{% if key %}{{ metric(title, key) }}{% else %}{{ title }}{% endif %}</h2>
   <span class="text-[10px] uppercase tracking-wider text-zinc-300 dark:text-zinc-600">{{ source }}</span>
 </div>
 {% endmacro %}
@@ -89,7 +90,7 @@
 
   <!-- Insider activity -->
   <section class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    {{ panel_header('Insider Activity', 'Finnhub · SEC EDGAR') }}
+    {{ panel_header('Insider Activity', 'Finnhub · SEC EDGAR', 'mspr') }}
 
     {% if data.insider.chart %}
     <div class="text-xs text-zinc-400 mb-2">
@@ -147,7 +148,7 @@
 
   <!-- Institutional ownership -->
   <section class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    {{ panel_header('Institutional Ownership (13F)', 'FMP · SEC EDGAR') }}
+    {{ panel_header('Institutional Ownership (13F)', 'FMP · SEC EDGAR', 'sec_13f') }}
 
     {% if data.institutional.holders %}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">

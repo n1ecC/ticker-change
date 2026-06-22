@@ -1,0 +1,1523 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import metric %}
+
+{% block title %}Live Market Microstructure & Option Greeks - Ticker-Change{% endblock %}
+
+{% block head_extra %}
+<!-- Plotly.js CDN -->
+<script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+<style>
+  /* Fading flash effects for order book updates */
+  @keyframes flash-green {
+    0% { background-color: rgba(16, 185, 129, 0.25); }
+    100% { background-color: transparent; }
+  }
+  @keyframes flash-red {
+    0% { background-color: rgba(244, 63, 94, 0.25); }
+    100% { background-color: transparent; }
+  }
+  .flash-up {
+    animation: flash-green 0.6s ease-out;
+  }
+  .flash-down {
+    animation: flash-red 0.6s ease-out;
+  }
+  
+  /* Microstructure Table Layout */
+  .depth-bar-bid {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(16, 185, 129, 0.08);
+    z-index: 0;
+    transition: width 0.3s ease;
+  }
+  .depth-bar-ask {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(244, 63, 94, 0.08);
+    z-index: 0;
+    transition: width 0.3s ease;
+  }
+  
+  /* Hide scrollbars but keep scrolling active */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header Bar -->
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+    <div class="flex items-center gap-4">
+      <div class="p-3 bg-amber-500/10 rounded-lg text-amber-500">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Live Market Microstructure</h1>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400">High-frequency order flow simulation & options Greeks calculator</p>
+      </div>
+    </div>
+    
+    <!-- Controls & Search -->
+    <div class="flex flex-wrap items-center gap-3">
+      <form method="GET" action="/live" class="flex gap-2">
+        <input 
+          type="text" 
+          name="ticker" 
+          value="{{ ticker }}" 
+          placeholder="Enter ticker (e.g. AAPL)" 
+          class="px-3 py-1.5 text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold uppercase tracking-wider"
+          required
+        />
+        <button type="submit" class="px-4 py-1.5 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow transition-colors">
+          Analyze
+        </button>
+      </form>
+      
+      <!-- WebSocket / Simulation Status Indicator -->
+      <div id="connection-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+        <span class="w-2 h-2 rounded-full bg-zinc-400 animate-pulse"></span>
+        <span id="connection-status-text">Disconnected</span>
+      </div>
+    </div>
+  </div>
+
+  {% if not ticker %}
+  <!-- Landing State -->
+  <div class="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm">
+    <svg class="w-16 h-16 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+    </svg>
+    <h2 class="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">No Active Ticker Selected</h2>
+    <p class="text-zinc-500 dark:text-zinc-400 max-w-sm text-sm mb-6">Enter a stock ticker above to start streaming order book data and option Greeks.</p>
+    <div class="flex flex-wrap justify-center gap-2">
+      {% for t in ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY'] %}
+      <a href="/live?ticker={{ t }}" class="px-3 py-1.5 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-lg transition-colors">
+        {{ t }}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+
+  <!-- Active Ticker Details -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- Spot Price Card -->
+    <div id="price-box" class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm transition-all duration-300">
+      <p class="text-xs font-medium text-zinc-400">Last Trade Price</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="current-price-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">Loading...</span>
+        <span id="price-direction-icon" class="text-sm font-semibold"></span>
+      </div>
+    </div>
+    
+    <!-- Spread Card -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Bid-Ask Spread', 'spread') }}</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="spread-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
+        <span id="spread-pct" class="text-xs text-zinc-500 dark:text-zinc-400 font-mono">(--)</span>
+      </div>
+    </div>
+    
+    <!-- VWAP Card -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Session VWAP', 'vwap') }}</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="vwap-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
+      </div>
+    </div>
+
+    <!-- Volatility Card -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Realized Volatility (5m)', 'realized_vol') }}</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="vol-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature Navigation Tabs -->
+  <div class="border-b border-zinc-200 dark:border-zinc-800 flex gap-6">
+    <button id="tab-btn-microstructure" onclick="switchTab('microstructure')" class="pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all">
+      Market Microstructure (L2 Depth)
+    </button>
+    <button id="tab-btn-greeks" onclick="switchTab('greeks')" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all">
+      Option Greeks & Payoff Simulator
+    </button>
+  </div>
+
+  <!-- Simulation Notification Banner -->
+  <div id="sim-warning-banner" class="hidden bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-4 py-3 rounded-lg flex items-center justify-between text-xs font-semibold">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <span>Simulation Mode active. No Finnhub API Key detected. Real-time websocket data requires a `FINNHUB_API_KEY` in your `.env`.</span>
+    </div>
+  </div>
+
+  <!-- Tab 1: Market Microstructure -->
+  <div id="tab-content-microstructure" class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Trades Feed (Left 3 columns) -->
+      <div class="lg:col-span-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[600px] overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
+          <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Trades Feed</h2>
+          <span id="trades-velocity" class="text-[10px] uppercase font-bold text-zinc-400">0.0 t/s</span>
+        </div>
+        
+        <div class="overflow-x-auto no-scrollbar flex-1 relative font-mono text-xs">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-[10px] text-zinc-400 bg-zinc-50 dark:bg-zinc-900/20 border-b border-zinc-200 dark:border-zinc-800 uppercase">
+                <th class="py-2 px-4">Time</th>
+                <th class="py-2 px-2 text-right">Price</th>
+                <th class="py-2 px-4 text-right">Size</th>
+              </tr>
+            </thead>
+            <tbody id="trades-feed-body">
+              <!-- Dynamically populated -->
+              <tr class="text-zinc-400 text-center"><td colspan="3" class="py-8">Waiting for trades...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- L2 Order Book (Middle 5 columns) -->
+      <div class="lg:col-span-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[600px] overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
+          <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">{{ metric('Level 2 Depth (Order Book)', 'order_book') }}</h2>
+          <div class="flex gap-2">
+            <span class="px-2 py-0.5 text-[9px] font-bold bg-emerald-500/10 text-emerald-500 rounded uppercase">Bids</span>
+            <span class="px-2 py-0.5 text-[9px] font-bold bg-rose-500/10 text-rose-500 rounded uppercase">Asks</span>
+          </div>
+        </div>
+        
+        <!-- Book Imbalance Bar -->
+        <div class="px-5 py-2 border-b border-zinc-200 dark:border-zinc-800 flex flex-col gap-1.5 text-xs bg-zinc-50/50 dark:bg-zinc-900/20">
+          <div class="flex justify-between font-semibold">
+            <span class="text-emerald-500 font-mono" id="imbalance-bid-pct">50.0%</span>
+            <span class="text-zinc-400">{{ metric('Order Book Imbalance', 'order_book_imbalance') }}</span>
+            <span class="text-rose-500 font-mono" id="imbalance-ask-pct">50.0%</span>
+          </div>
+          <div class="w-full h-2 bg-zinc-200 dark:bg-zinc-850 rounded-full overflow-hidden flex">
+            <div id="imbalance-bid-bar" class="bg-emerald-500 h-full transition-all duration-300" style="width: 50%;"></div>
+            <div id="imbalance-ask-bar" class="bg-rose-500 h-full transition-all duration-300" style="width: 50%;"></div>
+          </div>
+        </div>
+        
+        <!-- Mid / Spread summary (pinned at top) -->
+        <div class="px-5 py-2 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center text-xs bg-zinc-50/50 dark:bg-zinc-900/20">
+          <span class="text-zinc-400 font-medium uppercase text-[10px] tracking-wider">Mid / Spread</span>
+          <span class="font-mono font-semibold">
+            <span id="top-mid" class="text-zinc-800 dark:text-zinc-200">$--</span>
+            <span class="text-zinc-300 dark:text-zinc-700 mx-1.5">·</span>
+            <span id="top-spread" class="text-zinc-500 dark:text-zinc-400">$-- (--%)</span>
+          </span>
+        </div>
+
+        <!-- Book Grid -->
+        <div class="flex-1 overflow-y-auto no-scrollbar font-mono text-xs select-none">
+          <table class="w-full table-fixed text-left relative">
+            <thead>
+              <tr class="text-[10px] text-zinc-400 uppercase">
+                <th class="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 py-2 px-4 w-1/3">Bid Size</th>
+                <th class="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 py-2 px-2 text-center w-1/3">Price</th>
+                <th class="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 py-2 px-4 text-right w-1/3">Ask Size</th>
+              </tr>
+            </thead>
+            <tbody id="orderbook-body">
+              <!-- Loaded dynamically asks on top, center row, bids on bottom -->
+              <tr class="text-zinc-400 text-center"><td colspan="3" class="py-20">Constructing order book...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Real-Time Stats (Right 4 columns) -->
+      <div class="lg:col-span-4 flex flex-col gap-6">
+
+        <!-- Microstructure Stats -->
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex-1">
+          <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50 mb-4">Liquidity Analytics</h3>
+          
+          <div class="space-y-4 text-sm">
+            <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
+              <span class="text-zinc-400 font-medium">{{ metric('Mid Price', 'mid_price') }}</span>
+              <span id="stat-mid" class="font-mono font-bold text-zinc-800 dark:text-zinc-200">--</span>
+            </div>
+            
+            <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
+              <span class="text-zinc-400 font-medium">{{ metric('Spread Width', 'spread') }}</span>
+              <span id="stat-spread" class="font-mono font-bold text-zinc-800 dark:text-zinc-200">--</span>
+            </div>
+            
+            <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
+              <span class="text-zinc-400 font-medium">{{ metric('Bids Depth', 'market_depth') }} (<span id="bid-levels-label">15</span> levels)</span>
+              <span id="stat-bid-depth" class="font-mono font-bold text-emerald-500">--</span>
+            </div>
+            
+            <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
+              <span class="text-zinc-400 font-medium">{{ metric('Asks Depth', 'market_depth') }} (<span id="ask-levels-label">15</span> levels)</span>
+              <span id="stat-ask-depth" class="font-mono font-bold text-rose-500">--</span>
+            </div>
+            
+            <div class="flex justify-between items-center">
+              <span class="text-zinc-400 font-medium">Rolling Trades Count</span>
+              <span id="stat-trades-count" class="font-mono font-bold text-zinc-800 dark:text-zinc-200">0</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Market Depth (full-width row) -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex flex-col h-[380px]">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">{{ metric('Market Depth', 'market_depth') }}</h3>
+        <span class="text-[10px] uppercase font-bold text-zinc-400">Cumulative size · <span id="depth-levels-label">15</span> levels / side</span>
+      </div>
+      <div id="depth-chart" class="w-full flex-1"></div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Option Greeks -->
+  <div id="tab-content-greeks" class="hidden space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Option Chain (Left 7 columns) -->
+      <div class="lg:col-span-7 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[700px] overflow-hidden">
+        
+        <!-- Controls Header -->
+        <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap gap-4 items-center justify-between bg-zinc-50 dark:bg-zinc-900/50">
+          <div class="flex flex-wrap items-center gap-3">
+            <div>
+              <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Expiration</label>
+              <select id="expiration-select" onchange="loadOptionsGreeks()" class="px-2.5 py-1 text-xs font-semibold bg-zinc-105 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500">
+                <option>Loading dates...</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-0.5">Risk-free Rate</label>
+              <div class="flex items-center gap-1.5">
+                <input id="rf-rate-input" type="number" step="0.001" min="0" max="0.2" value="0.045" onchange="loadOptionsGreeks()" class="w-16 px-2 py-0.5 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-mono font-semibold" />
+                <span class="text-xs text-zinc-500">%</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="text-right">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block">Days to Expiration</span>
+            <span id="dte-val" class="font-mono text-sm font-bold text-zinc-800 dark:text-zinc-200">--</span>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="flex-1 overflow-x-auto no-scrollbar font-mono text-[11px] leading-relaxed">
+          <table class="w-full text-left whitespace-nowrap table-auto border-collapse">
+            <thead>
+              <tr class="text-[9px] text-zinc-400 bg-zinc-100 dark:bg-zinc-850 border-b border-zinc-200 dark:border-zinc-800 uppercase">
+                <th colspan="5" class="py-2 px-3 text-center border-r border-zinc-200 dark:border-zinc-800 text-emerald-500">Call Options</th>
+                <th class="py-2 px-3 text-center">Center</th>
+                <th colspan="5" class="py-2 px-3 text-center border-l border-zinc-200 dark:border-zinc-800 text-rose-500">Put Options</th>
+              </tr>
+              <tr class="text-[9px] text-zinc-400 bg-zinc-50 dark:bg-zinc-900/40 border-b border-zinc-200 dark:border-zinc-800 uppercase">
+                <!-- Calls -->
+                <th class="py-1.5 px-2 text-right">Delta</th>
+                <th class="py-1.5 px-2 text-right">Gamma</th>
+                <th class="py-1.5 px-2 text-right">Theta</th>
+                <th class="py-1.5 px-2 text-right">IV</th>
+                <th class="py-1.5 px-2 text-right border-r border-zinc-200 dark:border-zinc-800">Bid/Ask</th>
+                <!-- Strike -->
+                <th class="py-1.5 px-3 text-center font-bold bg-zinc-100/50 dark:bg-zinc-800/20 text-zinc-700 dark:text-zinc-300">Strike</th>
+                <!-- Puts -->
+                <th class="py-1.5 px-2 border-l border-zinc-200 dark:border-zinc-800">Bid/Ask</th>
+                <th class="py-1.5 px-2 text-right">IV</th>
+                <th class="py-1.5 px-2 text-right">Theta</th>
+                <th class="py-1.5 px-2 text-right">Gamma</th>
+                <th class="py-1.5 px-2 text-right">Delta</th>
+              </tr>
+            </thead>
+            <tbody id="option-chain-body">
+              <tr class="text-center text-zinc-400"><td colspan="11" class="py-40">Select expiration to populate options data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Charts & Payoff Simulator (Right 5 columns) -->
+      <div class="lg:col-span-5 flex flex-col gap-6">
+        
+        <!-- Greeks Charts Viewer -->
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Greeks Visualizer</h3>
+            <div class="flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg">
+              <button onclick="switchGreeksChart('delta')" id="chart-tab-delta" title="{{ GLOSSARY.delta.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500">Delta</button>
+              <button onclick="switchGreeksChart('gamma')" id="chart-tab-gamma" title="{{ GLOSSARY.gamma.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Gamma</button>
+              <button onclick="switchGreeksChart('iv')" id="chart-tab-iv" title="{{ GLOSSARY.iv_smile.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Smile</button>
+              <button onclick="switchGreeksChart('gex')" id="chart-tab-gex" title="{{ GLOSSARY.gex.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">GEX</button>
+            </div>
+          </div>
+          
+          <div id="greeks-chart" class="w-full flex-1"></div>
+        </div>
+
+        <!-- Payoff Simulator -->
+        <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex-1 flex flex-col">
+          <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50 mb-3">{{ metric('Options Payoff Simulator', 'payoff') }}</h3>
+          
+          <!-- Input Controls -->
+          <div class="grid grid-cols-2 gap-3 mb-4 text-xs">
+            <div>
+              <label class="block font-bold text-zinc-400 uppercase mb-0.5">Position</label>
+              <select id="payoff-position" onchange="drawPayoffDiagram()" class="w-full px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none font-semibold">
+                <option value="long">Long (Buy)</option>
+                <option value="short">Short (Sell)</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block font-bold text-zinc-400 uppercase mb-0.5">Option Type</label>
+              <select id="payoff-type" onchange="updateSimulatorPremium(); drawPayoffDiagram()" class="w-full px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none font-semibold">
+                <option value="call">Call Option</option>
+                <option value="put">Put Option</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block font-bold text-zinc-400 uppercase mb-0.5">Strike Price ($)</label>
+              <input id="payoff-strike" type="number" step="0.5" value="150" onchange="updateSimulatorPremium(); drawPayoffDiagram()" oninput="updateSimulatorPremium(); drawPayoffDiagram()" class="w-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono font-semibold" />
+            </div>
+            
+            <div>
+              <label class="block font-bold text-zinc-400 uppercase mb-0.5">Premium / Price ($)</label>
+              <input id="payoff-premium" type="number" step="0.05" value="5.0" onchange="drawPayoffDiagram()" oninput="drawPayoffDiagram()" class="w-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono font-semibold" />
+            </div>
+            
+            <div class="col-span-2">
+              <label class="block font-bold text-zinc-400 uppercase mb-0.5">Contracts (Multiplier x100)</label>
+              <input id="payoff-qty" type="number" min="1" value="1" onchange="drawPayoffDiagram()" oninput="drawPayoffDiagram()" class="w-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono font-semibold" />
+            </div>
+          </div>
+          
+          <!-- Payoff Output Stats -->
+          <div class="grid grid-cols-3 gap-2 text-center text-[10px] font-bold uppercase mb-4">
+            <div class="bg-zinc-50 dark:bg-zinc-850 p-2 rounded-lg">
+              <span class="text-zinc-400 block mb-0.5">Breakeven</span>
+              <span id="payoff-stat-breakeven" class="font-mono text-xs font-bold text-zinc-800 dark:text-zinc-200">--</span>
+            </div>
+            <div class="bg-zinc-50 dark:bg-zinc-850 p-2 rounded-lg">
+              <span class="text-zinc-400 block mb-0.5">Max Profit</span>
+              <span id="payoff-stat-profit" class="font-mono text-xs font-bold text-emerald-500">--</span>
+            </div>
+            <div class="bg-zinc-50 dark:bg-zinc-850 p-2 rounded-lg">
+              <span class="text-zinc-400 block mb-0.5">Max Loss</span>
+              <span id="payoff-stat-loss" class="font-mono text-xs font-bold text-rose-500">--</span>
+            </div>
+          </div>
+          
+          <!-- Payoff Chart -->
+          <div id="payoff-chart" class="w-full h-[220px]"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if ticker %}
+<script>
+  // Global dashboard state
+  const ticker = "{{ ticker.upper() }}";
+  const BOOK_LEVELS = 40;  // price levels per side — higher = more granular depth curve
+  let activeTab = 'microstructure';
+  let hasKey = false;
+  let finnhubKey = '';
+  let socket = null;
+  let simInterval = null;
+  let bookInterval = null;
+  
+  // Real-time market feed variables
+  let spotPrice = 0;
+  let lastPrice = 0;
+  let trades = [];
+  let rollingPrices = [];
+  let totalVolume = 0;
+  let totalVal = 0;
+  let vwap = 0;
+  let orderBook = { bids: [], asks: [] };
+  
+  // Option Greeks visualizer state
+  let optionsData = null;
+  let currentGreeksChart = 'delta';
+
+  // Flash triggers
+  function triggerFlash(elementId, flashClass) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.classList.remove('flash-up', 'flash-down');
+    void el.offsetWidth; // Trigger reflow
+    el.classList.add(flashClass.includes('emerald') ? 'flash-up' : 'flash-down');
+  }
+
+  // Load config & initialize WS / Sim
+  fetch('/api/config')
+    .then(r => r.json())
+    .then(data => {
+      hasKey = data.has_finnhub;
+      finnhubKey = data.finnhub_key;
+      
+      const banner = document.getElementById('sim-warning-banner');
+      if (!hasKey && banner) {
+        banner.classList.remove('hidden');
+      }
+      
+      // Get initial spot price from server
+      fetch(`/api/stock/${ticker}`)
+        .then(r => r.json())
+        .then(stock => {
+          if (stock.current_price) {
+            spotPrice = stock.current_price;
+            lastPrice = spotPrice;
+            document.getElementById('current-price-val').innerText = `$${spotPrice.toFixed(2)}`;
+            
+            // Build base L2 Order Book around spot price
+            generateOrderBook();
+            
+            // Launch websocket or simulator
+            connectWebSocket();
+            
+            // Setup regular size shifts
+            bookInterval = setInterval(updateOrderBookSizes, 400);
+          }
+        });
+    });
+
+  // Switch navigation tabs
+  function switchTab(tab) {
+    activeTab = tab;
+    
+    // Toggle contents
+    document.getElementById('tab-content-microstructure').classList.toggle('hidden', tab !== 'microstructure');
+    document.getElementById('tab-content-greeks').classList.toggle('hidden', tab !== 'greeks');
+    
+    // Update button states
+    const btnMicro = document.getElementById('tab-btn-microstructure');
+    const btnGreeks = document.getElementById('tab-btn-greeks');
+    
+    if (tab === 'microstructure') {
+      btnMicro.className = "pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all";
+      btnGreeks.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
+      // Reflow plotly charts in case dimensions were off
+      Plotly.Plots.resize('depth-chart');
+    } else {
+      btnGreeks.className = "pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all";
+      btnMicro.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
+      
+      // Load Option Greeks if not already loaded
+      if (!optionsData) {
+        loadExpirationDates().then(() => {
+          loadOptionsGreeks();
+        });
+      } else {
+        Plotly.Plots.resize('greeks-chart');
+        Plotly.Plots.resize('payoff-chart');
+      }
+    }
+  }
+
+  // Update Status Badge
+  function updateStatus(status) {
+    const badge = document.getElementById('connection-status-badge');
+    const text = document.getElementById('connection-status-text');
+    if (!badge || !text) return;
+    
+    badge.className = "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold";
+    
+    if (status === 'connected') {
+      badge.classList.add('bg-emerald-500/10', 'text-emerald-600', 'dark:text-emerald-400');
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> <span>Live WebSocket</span>`;
+    } else if (status === 'simulated') {
+      badge.classList.add('bg-amber-500/10', 'text-amber-600', 'dark:text-amber-400');
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> <span>Simulated Feed</span>`;
+    } else if (status === 'error') {
+      badge.classList.add('bg-rose-500/10', 'text-rose-600', 'dark:text-rose-400');
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span> <span>WS Error</span>`;
+    } else {
+      badge.classList.add('bg-zinc-100', 'dark:bg-zinc-800', 'text-zinc-600', 'dark:text-zinc-400');
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-zinc-400"></span> <span>Disconnected</span>`;
+    }
+  }
+
+  // WebSocket Connection
+  function connectWebSocket() {
+    if (socket) {
+      socket.close();
+    }
+    if (simInterval) clearInterval(simInterval);
+    
+    if (!hasKey) {
+      startSimulation();
+      return;
+    }
+    
+    updateStatus('connecting');
+    socket = new WebSocket(`wss://ws.finnhub.io?token=${finnhubKey}`);
+    
+    socket.onopen = function() {
+      updateStatus('connected');
+      socket.send(JSON.stringify({ type: 'subscribe', symbol: ticker }));
+    };
+    
+    socket.onmessage = function(event) {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'trade' && msg.data) {
+        msg.data.forEach(t => {
+          if (t.s === ticker) {
+            handleNewTrade(t.p, t.q || 100, new Date(t.t).toLocaleTimeString(), t.s);
+          }
+        });
+      }
+    };
+    
+    socket.onerror = function(err) {
+      console.error("Finnhub WS error:", err);
+      updateStatus('error');
+    };
+    
+    socket.onclose = function() {
+      updateStatus('disconnected');
+      console.log("WebSocket closed. Falling back to local simulator.");
+      startSimulation();
+    };
+  }
+
+  // Local Microstructure Simulation Mode
+  function startSimulation() {
+    updateStatus('simulated');
+    
+    let tickCount = 0;
+    simInterval = setInterval(() => {
+      const vol = 0.0015;
+      const change = (Math.random() - 0.5) * 2 * vol;
+      const nextPrice = lastPrice * (1 + change);
+      
+      const sizes = [100, 100, 100, 200, 200, 300, 400, 500, 1000, 1500, 2000, 5050, 10000];
+      const size = sizes[Math.floor(Math.random() * sizes.length)];
+      
+      const timeStr = new Date().toLocaleTimeString();
+      handleNewTrade(nextPrice, size, timeStr, ticker);
+      
+      tickCount++;
+      if (tickCount % 5 === 0) {
+        const tps = (1 + Math.random() * 2).toFixed(1);
+        const velocityEl = document.getElementById('trades-velocity');
+        if (velocityEl) velocityEl.innerText = `${tps} t/s`;
+      }
+    }, 1200);
+  }
+
+  // Handle Incoming Trade Data
+  function handleNewTrade(price, size, time, symbol) {
+    price = parseFloat(price);
+    size = parseInt(size) || 100;
+    
+    let direction = 'buy';
+    if (trades.length > 0) {
+      const prevPrice = trades[0].price;
+      if (price < prevPrice) {
+        direction = 'sell';
+      } else if (price > prevPrice) {
+        direction = 'buy';
+      } else {
+        direction = trades[0].direction;
+      }
+    }
+    
+    const newTrade = { price, size, time, direction };
+    trades.unshift(newTrade);
+    if (trades.length > 40) {
+      trades.pop();
+    }
+    
+    totalVolume += size;
+    totalVal += price * size;
+    vwap = totalVal / totalVolume;
+    
+    rollingPrices.push(price);
+    if (rollingPrices.length > 50) {
+      rollingPrices.shift();
+    }
+    
+    const priceDisplay = document.getElementById('current-price-val');
+    const priceIcon = document.getElementById('price-direction-icon');
+    
+    if (priceDisplay && lastPrice) {
+      const diff = price - lastPrice;
+      priceDisplay.innerText = `$${price.toFixed(2)}`;
+      
+      if (diff > 0) {
+        priceDisplay.className = 'text-3xl font-bold tracking-tight text-emerald-500 transition-colors font-mono';
+        if (priceIcon) {
+          priceIcon.innerHTML = '▲';
+          priceIcon.className = 'text-sm font-bold text-emerald-500';
+        }
+        triggerFlash('price-box', 'bg-emerald-500/10');
+      } else if (diff < 0) {
+        priceDisplay.className = 'text-3xl font-bold tracking-tight text-rose-500 transition-colors font-mono';
+        if (priceIcon) {
+          priceIcon.innerHTML = '▼';
+          priceIcon.className = 'text-sm font-bold text-rose-500';
+        }
+        triggerFlash('price-box', 'bg-rose-500/10');
+      } else {
+        priceDisplay.className = 'text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono';
+        if (priceIcon) priceIcon.innerHTML = '';
+      }
+    }
+    
+    lastPrice = price;
+    
+    adjustOrderBookCenter(price);
+    calculateVolatility();
+    renderTradesFeed();
+    renderMetrics();
+  }
+
+  // Shift L2 book centered on trade price
+  function adjustOrderBookCenter(price) {
+    if (!orderBook.bids.length) return;
+    
+    const tickSize = 0.01;
+    const currentSpread = Math.abs(orderBook.asks[0].price - orderBook.bids[0].price);
+    const midPrice = price;
+    
+    for (let i = 0; i < orderBook.bids.length; i++) {
+      const newBidPrice = midPrice - (currentSpread / 2) - i * tickSize;
+      const newAskPrice = midPrice + (currentSpread / 2) + i * tickSize;
+      
+      orderBook.bids[i].price = Math.round(newBidPrice * 100) / 100;
+      orderBook.asks[i].price = Math.round(newAskPrice * 100) / 100;
+    }
+    
+    let bidSum = 0;
+    orderBook.bids.forEach(b => {
+      bidSum += b.size;
+      b.cumulative = bidSum;
+    });
+    
+    let askSum = 0;
+    orderBook.asks.forEach(a => {
+      askSum += a.size;
+      a.cumulative = askSum;
+    });
+    
+    renderOrderBook();
+    renderDepthChart();
+  }
+
+  // Initialize base book depth
+  // Liquidity at a given level: a hump near the touch (peak ~level 4) spread
+  // across ~20 levels, plus a baseline so deep levels aren't empty, plus noise.
+  // Widening the hump over many levels is what makes the depth curve granular.
+  function levelLiquidity(i) {
+    return Math.exp(-Math.pow(i - 4, 2) / 120) * 1200 + 120 + Math.random() * 200;
+  }
+
+  function generateOrderBook() {
+    const bids = [];
+    const asks = [];
+    const tickSize = 0.01;
+    const spread = Math.max(tickSize, Math.round((lastPrice * 0.0003) * 100) / 100);
+    const midPrice = lastPrice;
+
+    let bidSum = 0;
+    let askSum = 0;
+
+    for (let i = 1; i <= BOOK_LEVELS; i++) {
+      const bidPrice = midPrice - (spread / 2) - (i - 1) * tickSize;
+      const bidSize = Math.round(levelLiquidity(i) * 10) / 10;
+      bidSum += bidSize;
+      bids.push({ price: Math.round(bidPrice * 100) / 100, size: bidSize, cumulative: bidSum });
+
+      const askPrice = midPrice + (spread / 2) + (i - 1) * tickSize;
+      const askSize = Math.round(levelLiquidity(i) * 10) / 10;
+      askSum += askSize;
+      asks.push({ price: Math.round(askPrice * 100) / 100, size: askSize, cumulative: askSum });
+    }
+
+    orderBook.bids = bids;
+    orderBook.asks = asks;
+
+    ['depth-levels-label', 'bid-levels-label', 'ask-levels-label'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerText = BOOK_LEVELS;
+    });
+
+    renderOrderBook();
+    renderDepthChart();
+  }
+
+  // Update sizes at random L2 book levels (noise simulation)
+  function updateOrderBookSizes() {
+    if (!orderBook.bids.length) return;
+    
+    const bidCount = Math.floor(Math.random() * 2) + 1;
+    for (let i = 0; i < bidCount; i++) {
+      const idx = Math.floor(Math.random() * orderBook.bids.length);
+      const sizeDiff = (Math.random() - 0.5) * 200;
+      const oldSize = orderBook.bids[idx].size;
+      orderBook.bids[idx].size = Math.max(10, Math.round((oldSize + sizeDiff) * 10) / 10);
+      triggerFlash(`bid-row-${idx}`, sizeDiff > 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10');
+    }
+    
+    const askCount = Math.floor(Math.random() * 2) + 1;
+    for (let i = 0; i < askCount; i++) {
+      const idx = Math.floor(Math.random() * orderBook.asks.length);
+      const sizeDiff = (Math.random() - 0.5) * 200;
+      const oldSize = orderBook.asks[idx].size;
+      orderBook.asks[idx].size = Math.max(10, Math.round((oldSize + sizeDiff) * 10) / 10);
+      triggerFlash(`ask-row-${idx}`, sizeDiff > 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10');
+    }
+    
+    let bidSum = 0;
+    orderBook.bids.forEach(b => {
+      bidSum += b.size;
+      b.cumulative = bidSum;
+    });
+    
+    let askSum = 0;
+    orderBook.asks.forEach(a => {
+      askSum += a.size;
+      a.cumulative = askSum;
+    });
+    
+    renderOrderBook();
+    renderDepthChart();
+  }
+
+  // Calculate standard deviation of returns (rolling historical volatility)
+  function calculateVolatility() {
+    if (rollingPrices.length < 5) return;
+    
+    const returns = [];
+    for (let i = 1; i < rollingPrices.length; i++) {
+      returns.push(Math.log(rollingPrices[i] / rollingPrices[i - 1]));
+    }
+    
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (returns.length - 1);
+    const stdDev = Math.sqrt(variance);
+    
+    const annualizedVol = stdDev * Math.sqrt(252 * 390 * 60 * 60) * 100;
+    
+    const volEl = document.getElementById('vol-val');
+    if (volEl && !isNaN(annualizedVol)) {
+      volEl.innerText = `${annualizedVol.toFixed(2)}%`;
+    }
+  }
+
+  // Render Trades log to DOM
+  function renderTradesFeed() {
+    const tbody = document.getElementById('trades-feed-body');
+    if (!tbody) return;
+    
+    if (trades.length === 0) {
+      tbody.innerHTML = `<tr class="text-zinc-400 text-center"><td colspan="3" class="py-8">Waiting for trades...</td></tr>`;
+      return;
+    }
+    
+    tbody.innerHTML = trades.map(t => {
+      const colorClass = t.direction === 'buy' ? 'text-emerald-500' : 'text-rose-500';
+      return `
+        <tr class="border-b border-zinc-100 dark:border-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/10 animate-fade-in">
+          <td class="py-2.5 px-4 text-zinc-500 font-mono">${t.time}</td>
+          <td class="py-2.5 px-2 text-right font-bold ${colorClass}">${t.price.toFixed(2)}</td>
+          <td class="py-2.5 px-4 text-right text-zinc-700 dark:text-zinc-400 font-semibold">${t.size}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Render L2 orderbook
+  function renderOrderBook() {
+    const tbody = document.getElementById('orderbook-body');
+    if (!tbody) return;
+    
+    const maxDepth = Math.max(
+      orderBook.bids[orderBook.bids.length - 1].cumulative,
+      orderBook.asks[orderBook.asks.length - 1].cumulative
+    ) || 1000;
+    
+    let html = '';
+    
+    for (let i = orderBook.asks.length - 1; i >= 0; i--) {
+      const ask = orderBook.asks[i];
+      const pct = (ask.cumulative / maxDepth) * 100;
+      html += `
+        <tr id="ask-row-${i}" class="relative border-b border-zinc-100 dark:border-zinc-850 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20">
+          <td class="py-1.5 px-4 text-zinc-500"></td>
+          <td class="py-1.5 px-2 text-center text-rose-500 font-bold z-10 relative">${ask.price.toFixed(2)}</td>
+          <td class="py-1.5 px-4 text-right text-zinc-700 dark:text-zinc-300 font-semibold z-10 relative font-mono">
+            <span class="depth-bar-ask" style="width: ${pct}%"></span>
+            ${ask.size.toFixed(1)}
+          </td>
+        </tr>
+      `;
+    }
+    
+    const bidPrice = orderBook.bids[0].price;
+    const askPrice = orderBook.asks[0].price;
+    const spread = askPrice - bidPrice;
+    const spreadPct = (spread / askPrice) * 100;
+
+    // Pinned top summary — mirrors the midpoint divider so spread is always visible.
+    const topMid = document.getElementById('top-mid');
+    const topSpread = document.getElementById('top-spread');
+    if (topMid) topMid.innerText = `$${((bidPrice + askPrice) / 2).toFixed(2)}`;
+    if (topSpread) topSpread.innerText = `$${spread.toFixed(2)} (${spreadPct.toFixed(3)}%)`;
+
+    html += `
+      <tr class="bg-zinc-50 dark:bg-zinc-900 border-y border-zinc-200 dark:border-zinc-800">
+        <td class="py-2.5 px-4 font-bold text-zinc-500 dark:text-zinc-400 uppercase">Spread</td>
+        <td class="py-2.5 px-2 text-center font-bold text-zinc-400 dark:text-zinc-500 font-mono">$${spread.toFixed(2)}</td>
+        <td class="py-2.5 px-4 text-right font-bold text-rose-500 font-mono">${spreadPct.toFixed(3)}%</td>
+      </tr>
+    `;
+    
+    for (let i = 0; i < orderBook.bids.length; i++) {
+      const bid = orderBook.bids[i];
+      const pct = (bid.cumulative / maxDepth) * 100;
+      html += `
+        <tr id="bid-row-${i}" class="relative border-b border-zinc-100 dark:border-zinc-850 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20">
+          <td class="py-1.5 px-4 text-left text-zinc-700 dark:text-zinc-300 font-semibold z-10 relative font-mono">
+            <span class="depth-bar-bid" style="width: ${pct}%"></span>
+            ${bid.size.toFixed(1)}
+          </td>
+          <td class="py-1.5 px-2 text-center text-emerald-500 font-bold z-10 relative">${bid.price.toFixed(2)}</td>
+          <td class="py-1.5 px-4 text-zinc-500"></td>
+        </tr>
+      `;
+    }
+    
+    tbody.innerHTML = html;
+  }
+
+  // Render metrics and stats
+  function renderMetrics() {
+    const vwapEl = document.getElementById('vwap-val');
+    if (vwapEl && vwap > 0) {
+      vwapEl.innerText = `$${vwap.toFixed(2)}`;
+    }
+    
+    const bidPrice = orderBook.bids[0].price;
+    const askPrice = orderBook.asks[0].price;
+    const spread = askPrice - bidPrice;
+    const spreadPct = (spread / askPrice) * 100;
+    
+    document.getElementById('spread-val').innerText = `$${spread.toFixed(2)}`;
+    document.getElementById('spread-pct').innerText = `${spreadPct.toFixed(3)}%`;
+    
+    const totalBidSize = orderBook.bids.reduce((a, b) => a + b.size, 0);
+    const totalAskSize = orderBook.asks.reduce((a, b) => a + b.size, 0);
+    const sum = totalBidSize + totalAskSize;
+    const bidPct = (totalBidSize / sum) * 100;
+    const askPct = (totalAskSize / sum) * 100;
+    
+    document.getElementById('imbalance-bid-pct').innerText = `${bidPct.toFixed(1)}%`;
+    document.getElementById('imbalance-ask-pct').innerText = `${askPct.toFixed(1)}%`;
+    
+    const bidBar = document.getElementById('imbalance-bid-bar');
+    const askBar = document.getElementById('imbalance-ask-bar');
+    if (bidBar && askBar) {
+      bidBar.style.width = `${bidPct}%`;
+      askBar.style.width = `${askPct}%`;
+    }
+    
+    document.getElementById('stat-mid').innerText = `$${((bidPrice + askPrice) / 2).toFixed(2)}`;
+    document.getElementById('stat-spread').innerText = `$${spread.toFixed(2)} (${spreadPct.toFixed(3)}%)`;
+    document.getElementById('stat-bid-depth').innerText = `${totalBidSize.toFixed(1)} contracts`;
+    document.getElementById('stat-ask-depth').innerText = `${totalAskSize.toFixed(1)} contracts`;
+    document.getElementById('stat-trades-count').innerText = trades.length;
+  }
+
+  // Render Depth Area Chart
+  function renderDepthChart() {
+    if (!orderBook.bids.length) return;
+    
+    const bidPrices = orderBook.bids.map(b => b.price).reverse();
+    const bidDepths = orderBook.bids.map(b => b.cumulative).reverse();
+    
+    const askPrices = orderBook.asks.map(a => a.price);
+    const askDepths = orderBook.asks.map(a => a.cumulative);
+    
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    const mid = (orderBook.bids[0].price + orderBook.asks[0].price) / 2;
+
+    const data = [
+      {
+        x: bidPrices,
+        y: bidDepths,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Bids',
+        fill: 'tozeroy',
+        fillcolor: 'rgba(16, 185, 129, 0.1)',
+        line: { color: '#10b981', shape: 'hv', width: 2 },
+        hovertemplate: 'Bid $%{x:.2f}<br>Cum %{y:,.0f}<extra></extra>'
+      },
+      {
+        x: askPrices,
+        y: askDepths,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Asks',
+        fill: 'tozeroy',
+        fillcolor: 'rgba(244, 63, 94, 0.1)',
+        line: { color: '#f43f5e', shape: 'hv', width: 2 },
+        hovertemplate: 'Ask $%{x:.2f}<br>Cum %{y:,.0f}<extra></extra>'
+      }
+    ];
+
+    const layout = {
+      xaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        tickformat: '$,.2f',
+        zeroline: false
+      },
+      yaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        zeroline: false
+      },
+      shapes: [{
+        type: 'line', x0: mid, x1: mid, y0: 0, y1: 1, yref: 'paper',
+        line: { color: '#fbbf24', width: 1.25, dash: 'dash' }
+      }],
+      annotations: [{
+        x: mid, y: 1, yref: 'paper', text: `Mid $${mid.toFixed(2)}`,
+        showarrow: false, yanchor: 'bottom',
+        font: { size: 9, color: '#fbbf24', weight: 'bold' }
+      }],
+      margin: { l: 55, r: 15, t: 14, b: 28 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      showlegend: false,
+      hovermode: 'x unified'
+    };
+
+    Plotly.newPlot('depth-chart', data, layout, { displayModeBar: false, responsive: true });
+  }
+
+  // --- TAB 2: OPTION GREEKS LOGIC ---
+  
+  async function loadExpirationDates() {
+    const res = await fetch(`/api/options-greeks/${ticker}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    const select = document.getElementById('expiration-select');
+    if (!select) return;
+    
+    select.innerHTML = data.expirations.map(d => `<option value="${d}">${d}</option>`).join('');
+    document.getElementById('dte-val').innerText = `${data.days_to_expiration} days`;
+  }
+
+  async function loadOptionsGreeks() {
+    const select = document.getElementById('expiration-select');
+    if (!select || !select.value) return;
+    
+    const date = select.value;
+    const rfRate = document.getElementById('rf-rate-input').value;
+    
+    document.getElementById('option-chain-body').innerHTML = `
+      <tr class="text-center text-zinc-400">
+        <td colspan="11" class="py-40">
+          <div class="inline-flex gap-2 items-center text-zinc-500">
+            <svg class="animate-spin w-4.5 h-4.5 text-amber-500" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-xs font-semibold">Simulating Greeks via Black-Scholes...</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    
+    const res = await fetch(`/api/options-greeks/${ticker}?expiration=${date}&rf_rate=${rfRate}`);
+    if (!res.ok) {
+      document.getElementById('option-chain-body').innerHTML = `
+        <tr class="text-center text-zinc-400">
+          <td colspan="11" class="py-40 text-rose-500 font-semibold">Failed to fetch options chain.</td>
+        </tr>
+      `;
+      return;
+    }
+    
+    optionsData = await res.json();
+    renderOptionChainTable();
+    renderGreeksChart();
+    initPayoffSimulator();
+  }
+
+  function renderOptionChainTable() {
+    const tbody = document.getElementById('option-chain-body');
+    if (!tbody || !optionsData) return;
+    
+    const spot = optionsData.spot_price;
+    let html = '';
+    
+    optionsData.options.forEach(opt => {
+      const callItmClass = opt.strike < spot ? 'bg-emerald-500/[0.04] dark:bg-emerald-500/[0.02]' : '';
+      const putItmClass = opt.strike > spot ? 'bg-rose-500/[0.04] dark:bg-rose-500/[0.02]' : '';
+      
+      const cBidAsk = `${opt.call_bid.toFixed(2)} / ${opt.call_ask.toFixed(2)}`;
+      const pBidAsk = `${opt.put_bid.toFixed(2)} / ${opt.put_ask.toFixed(2)}`;
+      
+      html += `
+        <tr class="border-b border-zinc-150 dark:border-zinc-850 hover:bg-zinc-50 dark:hover:bg-zinc-800/10">
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} font-semibold cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${opt.call_delta === 'N/A' ? 'N/A' : opt.call_delta.toFixed(3)}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} text-zinc-400 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${opt.call_gamma === 'N/A' ? 'N/A' : opt.call_gamma.toFixed(4)}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} text-zinc-400 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${opt.call_theta === 'N/A' ? 'N/A' : opt.call_theta.toFixed(4)}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} font-semibold text-amber-500 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${opt.call_iv.toFixed(1)}%</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} border-r border-zinc-200 dark:border-zinc-800 font-bold cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${cBidAsk}</td>
+          
+          <td class="py-1.5 px-3 text-center font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 relative">${opt.strike.toFixed(2)}</td>
+          
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 border-l border-zinc-200 dark:border-zinc-800 ${putItmClass} font-bold cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${pBidAsk}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} font-semibold text-amber-500 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${opt.put_iv.toFixed(1)}%</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} text-zinc-400 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${opt.put_theta === 'N/A' ? 'N/A' : opt.put_theta.toFixed(4)}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} text-zinc-400 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${opt.put_gamma === 'N/A' ? 'N/A' : opt.put_gamma.toFixed(4)}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} font-semibold cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${opt.put_delta === 'N/A' ? 'N/A' : opt.put_delta.toFixed(3)}</td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+  }
+
+  function updateSimulatorPremium() {
+    if (!optionsData || !optionsData.options.length) return;
+    
+    const strike = parseFloat(document.getElementById('payoff-strike').value);
+    const type = document.getElementById('payoff-type').value;
+    
+    if (isNaN(strike)) return;
+    
+    // Find closest strike
+    let closestOpt = optionsData.options[0];
+    let minDiff = Math.abs(closestOpt.strike - strike);
+    
+    optionsData.options.forEach(opt => {
+      const diff = Math.abs(opt.strike - strike);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestOpt = opt;
+      }
+    });
+    
+    // Calculate premium (mid price)
+    let premium = 0;
+    if (type === 'call') {
+      premium = (closestOpt.call_bid + closestOpt.call_ask) / 2 || closestOpt.call_last || 1.5;
+    } else {
+      // Use put mid/last, fallback to call if missing, else default
+      premium = (closestOpt.put_bid + closestOpt.put_ask) / 2 || closestOpt.put_last || (closestOpt.call_bid + closestOpt.call_ask) / 2 || 1.5;
+    }
+    
+    document.getElementById('payoff-premium').value = premium.toFixed(2);
+  }
+
+  function selectOptionForSimulator(strike, type) {
+    if (!optionsData) return;
+    
+    const opt = optionsData.options.find(o => Math.abs(o.strike - strike) < 0.01);
+    if (!opt) return;
+    
+    document.getElementById('payoff-strike').value = strike.toFixed(2);
+    document.getElementById('payoff-type').value = type;
+    
+    let premium = 0;
+    if (type === 'call') {
+      premium = (opt.call_bid + opt.call_ask) / 2 || opt.call_last || 1.5;
+    } else {
+      premium = (opt.put_bid + opt.put_ask) / 2 || opt.put_last || (opt.call_bid + opt.call_ask) / 2 || 1.5;
+    }
+    
+    document.getElementById('payoff-premium').value = premium.toFixed(2);
+    drawPayoffDiagram();
+    
+    // Smooth scroll to the payoff chart
+    document.getElementById('payoff-chart').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function switchGreeksChart(type) {
+    currentGreeksChart = type;
+    
+    const tabs = ['delta', 'gamma', 'iv', 'gex'];
+    tabs.forEach(t => {
+      const btn = document.getElementById(`chart-tab-${t}`);
+      if (t === type) {
+        btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500";
+      } else {
+        btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400";
+      }
+    });
+    
+    renderGreeksChart();
+  }
+
+  function renderGreeksChart() {
+    if (!optionsData || !optionsData.options.length) return;
+    
+    const strikes = optionsData.options.map(o => o.strike);
+    const isDark = document.documentElement.classList.contains('dark');
+    const spot = optionsData.spot_price;
+    
+    let traces = [];
+    let extraShapes = [];
+    let extraAnnotations = [];
+
+    if (currentGreeksChart === 'delta') {
+      const cDeltas = optionsData.options.map(o => o.call_delta === 'N/A' ? null : o.call_delta);
+      const pDeltas = optionsData.options.map(o => o.put_delta === 'N/A' ? null : o.put_delta);
+      traces = [
+        {
+          x: strikes,
+          y: cDeltas,
+          name: 'Call Delta',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#10b981', width: 2 },
+          marker: { size: 4 }
+        },
+        {
+          x: strikes,
+          y: pDeltas,
+          name: 'Put Delta',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#f43f5e', width: 2 },
+          marker: { size: 4 }
+        }
+      ];
+    } else if (currentGreeksChart === 'gamma') {
+      const gammas = optionsData.options.map(o => o.call_gamma === 'N/A' ? null : o.call_gamma);
+      traces = [
+        {
+          x: strikes,
+          y: gammas,
+          name: 'Gamma',
+          type: 'scatter',
+          mode: 'lines+markers',
+          fill: 'tozeroy',
+          fillcolor: 'rgba(99, 102, 241, 0.1)',
+          line: { color: '#6366f1', width: 2 },
+          marker: { size: 4 }
+        }
+      ];
+    } else if (currentGreeksChart === 'iv') {
+      const cIvs = optionsData.options.map(o => o.call_iv);
+      const pIvs = optionsData.options.map(o => o.put_iv);
+      traces = [
+        {
+          x: strikes,
+          y: cIvs,
+          name: 'Call IV',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#fbbf24', width: 2 },
+          marker: { size: 4 }
+        },
+        {
+          x: strikes,
+          y: pIvs,
+          name: 'Put IV',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#a78bfa', width: 2 },
+          marker: { size: 4 }
+        }
+      ];
+    } else if (currentGreeksChart === 'gex') {
+      // Dealer Gamma Exposure per strike, computed from the already-fetched
+      // chain: Γ × OI × 100 × Spot² × 0.01, signed long-calls(+)/short-puts(−),
+      // scaled to $M of gamma per 1% move. No extra network calls.
+      const callGex = optionsData.options.map(o =>
+        (o.call_gamma === 'N/A' ? 0 : o.call_gamma) * (o.call_oi || 0) * 100 * spot * spot * 0.01 / 1e6);
+      const putGex = optionsData.options.map(o =>
+        -(o.put_gamma === 'N/A' ? 0 : o.put_gamma) * (o.put_oi || 0) * 100 * spot * spot * 0.01 / 1e6);
+      const netGex = callGex.map((c, i) => c + putGex[i]);
+
+      traces = [
+        {
+          x: strikes,
+          y: callGex,
+          name: 'Call GEX',
+          type: 'bar',
+          marker: { color: '#10b981' }
+        },
+        {
+          x: strikes,
+          y: putGex,
+          name: 'Put GEX',
+          type: 'bar',
+          marker: { color: '#f43f5e' }
+        }
+      ];
+
+      // Call wall (max +GEX) and put wall (most −GEX) — structural res/support.
+      let callWall = null, putWall = null, maxC = 0, minP = 0;
+      callGex.forEach((v, i) => { if (v > maxC) { maxC = v; callWall = strikes[i]; } });
+      putGex.forEach((v, i) => { if (v < minP) { minP = v; putWall = strikes[i]; } });
+
+      // Gamma flip: strike where cumulative net GEX crosses zero (interpolated).
+      let cum = 0, prevCum = 0, flip = null;
+      for (let i = 0; i < netGex.length; i++) {
+        prevCum = cum; cum += netGex[i];
+        if (i > 0 && ((prevCum <= 0 && cum > 0) || (prevCum >= 0 && cum < 0))) {
+          const x0 = strikes[i - 1], x1 = strikes[i];
+          flip = cum !== prevCum ? x0 + (x1 - x0) * (-prevCum) / (cum - prevCum) : x1;
+          break;
+        }
+      }
+
+      const levels = [
+        [callWall, '#10b981', 'Call wall'],
+        [putWall, '#f43f5e', 'Put wall'],
+        [flip, '#6366f1', 'γ-flip']
+      ];
+      levels.forEach(([x, color, label]) => {
+        if (x == null) return;
+        extraShapes.push({
+          type: 'line', x0: x, x1: x, y0: 0, y1: 1, yref: 'paper',
+          line: { color, width: 1.25, dash: 'dot' }
+        });
+        extraAnnotations.push({
+          x, y: 0.92, yref: 'paper',
+          text: `${label} $${x.toFixed(0)}`, showarrow: false,
+          font: { size: 8, color }
+        });
+      });
+    }
+
+    const layout = {
+      barmode: 'relative',
+      xaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        zeroline: false
+      },
+      yaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        zeroline: false
+      },
+      shapes: [{
+        type: 'line',
+        x0: spot,
+        x1: spot,
+        y0: 0,
+        y1: 1.1,
+        yref: 'paper',
+        line: { color: '#fbbf24', width: 1.5, dash: 'dash' }
+      }, ...extraShapes],
+      annotations: [{
+        x: spot,
+        y: 1.05,
+        yref: 'paper',
+        text: 'Spot',
+        showarrow: false,
+        font: { size: 9, color: '#fbbf24', weight: 'bold' }
+      }, ...extraAnnotations],
+      margin: { l: 40, r: 15, t: 20, b: 30 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, x: 0, font: { size: 9, color: isDark ? '#ffffff' : '#71717a' } },
+      hovermode: 'x unified'
+    };
+    
+    Plotly.newPlot('greeks-chart', traces, layout, { displayModeBar: false, responsive: true });
+  }
+
+  function initPayoffSimulator() {
+    if (!optionsData || !optionsData.options.length) return;
+    
+    const strikes = optionsData.options;
+    const spot = optionsData.spot_price;
+    let closestOpt = strikes[0];
+    let minDiff = Math.abs(closestOpt.strike - spot);
+    
+    strikes.forEach(opt => {
+      const diff = Math.abs(opt.strike - spot);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestOpt = opt;
+      }
+    });
+    
+    document.getElementById('payoff-strike').value = closestOpt.strike.toFixed(2);
+    const premium = (closestOpt.call_bid + closestOpt.call_ask) / 2 || closestOpt.call_last || 1.5;
+    document.getElementById('payoff-premium').value = premium.toFixed(2);
+    
+    drawPayoffDiagram();
+  }
+
+  function drawPayoffDiagram() {
+    const strike = parseFloat(document.getElementById('payoff-strike').value);
+    const premium = parseFloat(document.getElementById('payoff-premium').value);
+    const qty = parseInt(document.getElementById('payoff-qty').value) || 1;
+    const type = document.getElementById('payoff-type').value;
+    const position = document.getElementById('payoff-position').value;
+    
+    if (isNaN(strike) || isNaN(premium) || !optionsData) return;
+    
+    const spot = optionsData.spot_price;
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    const prices = [];
+    const minVal = strike * 0.7;
+    const maxVal = strike * 1.3;
+    const steps = 100;
+    
+    for (let i = 0; i <= steps; i++) {
+      prices.push(minVal + (i / steps) * (maxVal - minVal));
+    }
+    
+    const pnlValues = prices.map(s => {
+      let payoff = 0;
+      if (type === 'call') {
+        payoff = Math.max(s - strike, 0);
+      } else {
+        payoff = Math.max(strike - s, 0);
+      }
+      
+      let pnl = 0;
+      if (position === 'long') {
+        pnl = (payoff - premium) * qty * 100;
+      } else {
+        pnl = (premium - payoff) * qty * 100;
+      }
+      
+      return pnl;
+    });
+    
+    let maxProfit = 0;
+    let maxLoss = 0;
+    let breakeven = 0;
+    
+    if (type === 'call') {
+      breakeven = strike + premium;
+      if (position === 'long') {
+        maxProfit = 'Unlimited';
+        maxLoss = `-$${(premium * qty * 100).toFixed(0)}`;
+      } else {
+        maxProfit = `$${(premium * qty * 100).toFixed(0)}`;
+        maxLoss = 'Unlimited';
+      }
+    } else {
+      breakeven = strike - premium;
+      if (position === 'long') {
+        maxProfit = `$${((strike - premium) * qty * 100).toFixed(0)}`;
+        maxLoss = `-$${(premium * qty * 100).toFixed(0)}`;
+      } else {
+        maxProfit = `$${(premium * qty * 100).toFixed(0)}`;
+        maxLoss = `-$${((strike - premium) * qty * 100).toFixed(0)}`;
+      }
+    }
+    
+    document.getElementById('payoff-stat-breakeven').innerText = `$${breakeven.toFixed(2)}`;
+    
+    const profitEl = document.getElementById('payoff-stat-profit');
+    profitEl.innerText = maxProfit;
+    profitEl.className = maxProfit.includes('-') ? 'font-mono text-xs font-bold text-rose-500' : 'font-mono text-xs font-bold text-emerald-500';
+    
+    const lossEl = document.getElementById('payoff-stat-loss');
+    lossEl.innerText = maxLoss;
+    lossEl.className = maxLoss.includes('-') ? 'font-mono text-xs font-bold text-rose-500' : 'font-mono text-xs font-bold text-emerald-500';
+    
+    const traceLine = {
+      x: prices,
+      y: pnlValues,
+      type: 'scatter',
+      mode: 'lines',
+      name: 'P&L ($)',
+      line: { color: '#6366f1', width: 2.5 }
+    };
+    
+    const layout = {
+      xaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        zeroline: false
+      },
+      yaxis: {
+        tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
+        gridcolor: isDark ? '#27272a' : '#f4f4f5',
+        zeroline: false
+      },
+      shapes: [
+        {
+          type: 'line',
+          x0: minVal,
+          x1: maxVal,
+          y0: 0,
+          y1: 0,
+          line: { color: isDark ? '#3f3f46' : '#d4d4d8', width: 1.5 }
+        },
+        {
+          type: 'line',
+          x0: spot,
+          x1: spot,
+          y0: 0,
+          y1: 1,
+          yref: 'paper',
+          line: { color: '#fbbf24', width: 1.5, dash: 'dot' }
+        }
+      ],
+      annotations: [
+        {
+          x: spot,
+          y: 0.95,
+          yref: 'paper',
+          text: 'Spot',
+          showarrow: false,
+          font: { size: 9, color: '#fbbf24', weight: 'bold' }
+        }
+      ],
+      margin: { l: 45, r: 15, t: 10, b: 35 },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      showlegend: false,
+      hovermode: 'x unified'
+    };
+    
+    Plotly.newPlot('payoff-chart', [traceLine], layout, { displayModeBar: false, responsive: true });
+  }
+
+</script>
+{% endif %}
+{% endblock %}
