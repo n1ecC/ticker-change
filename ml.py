@@ -243,6 +243,26 @@ def _sample_weights(y: pd.Series) -> np.ndarray:
     return w.to_numpy()
 
 
+def _importances(model, X: pd.DataFrame, y: pd.Series) -> dict:
+    """Per-feature importance normalised to sum 1 — native if the model exposes
+    it (LightGBM), else permutation importance (HistGradientBoosting), else flat."""
+    imp = getattr(model, "feature_importances_", None)
+    if imp is None:
+        try:
+            from sklearn.inspection import permutation_importance
+            sub = slice(-min(600, len(X)), None)
+            r = permutation_importance(model, X.iloc[sub], y.iloc[sub],
+                                       n_repeats=3, random_state=0)
+            imp = np.clip(r.importances_mean, 0, None)
+        except Exception:
+            imp = None
+    arr = np.asarray(imp, dtype=float) if imp is not None else np.ones(len(FEATURES))
+    if not np.isfinite(arr).all() or arr.sum() <= 0:
+        arr = np.ones(len(FEATURES))
+    arr = arr / arr.sum()
+    return {f: float(w) for f, w in zip(FEATURES, arr)}
+
+
 # --------------------------------------------------------------------------- #
 # Walk-forward validation                                                      #
 # --------------------------------------------------------------------------- #
@@ -318,8 +338,14 @@ def train(tickers: list[str]) -> None:
     except TypeError:
         model.fit(X, y)
         
+    # Stored for the per-prediction explainer: which features the model weights,
+    # and the typical value of each (so predict() can flag unusual readings).
+    importances = _importances(model, X, y)
+    feature_stats = {f: {"mean": float(X[f].mean()), "std": float(X[f].std())} for f in FEATURES}
+
     with open(MODEL_PATH, "wb") as f:
-        pickle.dump({"model": model, "features": FEATURES, "horizon": HORIZON}, f)
+        pickle.dump({"model": model, "features": FEATURES, "horizon": HORIZON,
+                     "importances": importances, "feature_stats": feature_stats}, f)
     print(f"\nSaved model → {MODEL_PATH}")
 
     # Invalidate cached predictions — they came from the previous model and the
@@ -334,6 +360,80 @@ def train(tickers: list[str]) -> None:
 # Serving                                                                      #
 # --------------------------------------------------------------------------- #
 _CACHE_TTL_HOURS = 6
+
+# Plain-English reading for each feature: (short label, phrase when the value is
+# unusually HIGH, phrase when unusually LOW). Used by the signal explainer.
+FEATURE_LABELS = {
+    "ret_1":         ("1-day return", "a sharp up day", "a sharp down day"),
+    "ret_5":         ("1-week return", "strength over the past week", "weakness over the past week"),
+    "ret_10":        ("2-week return", "strength over two weeks", "weakness over two weeks"),
+    "ret_20":        ("1-month return", "strength over the past month", "weakness over the past month"),
+    "vol_10":        ("10-day volatility", "elevated short-term volatility", "unusually calm trading"),
+    "vol_20":        ("1-month volatility", "elevated volatility", "unusually low volatility"),
+    "rsi_14":        ("RSI(14)", "an overbought RSI", "an oversold RSI"),
+    "macd_hist":     ("MACD histogram", "bullish MACD momentum", "bearish MACD momentum"),
+    "atr_14":        ("ATR range", "a wide trading range", "a tight trading range"),
+    "hl_range":      ("daily range", "a wide daily range", "a tight daily range"),
+    "dist_sma20":    ("price vs 20-day avg", "price well above its 20-day average", "price well below its 20-day average"),
+    "dist_sma50":    ("price vs 50-day avg", "price well above its 50-day average", "price well below its 50-day average"),
+    "dist_sma200":   ("price vs 200-day avg", "price well above its 200-day average", "price well below its 200-day average"),
+    "vol_z":         ("volume", "unusually heavy volume", "unusually light volume"),
+    "mom_63":        ("3-month momentum", "strong 3-month momentum", "weak or negative 3-month momentum"),
+    "gk_vol_10":     ("10-day intraday vol", "elevated intraday volatility", "subdued intraday volatility"),
+    "gk_vol_20":     ("1-month intraday vol", "elevated intraday volatility", "subdued intraday volatility"),
+    "bb_width":      ("Bollinger width", "wide, expanding Bollinger bands", "tight, squeezing Bollinger bands"),
+    "bb_pct":        ("Bollinger %B", "price near the upper Bollinger band", "price near the lower Bollinger band"),
+    "vol_trend_5_20":("volume trend", "a rising volume trend", "a fading volume trend"),
+    "dist_ema8":     ("price vs 8-day EMA", "price above its 8-day EMA", "price below its 8-day EMA"),
+    "dist_ema21":    ("price vs 21-day EMA", "price above its 21-day EMA", "price below its 21-day EMA"),
+    "ema_cross_8_21":("8/21 EMA spread", "a bullish short-vs-medium EMA cross", "a bearish short-vs-medium EMA cross"),
+    "hl_range_std_10":("range stability", "choppy, expanding ranges", "stable, contracting ranges"),
+}
+
+
+def _explain(row: pd.Series, bundle: dict, action: str, confidence: float) -> tuple[list, str | None]:
+    """Rank the features driving THIS prediction and write a plain-English note.
+
+    Score = model importance × how unusual today's reading is (|z| vs the training
+    distribution): a feature matters here only if the model weights it AND today's
+    value is atypical. Not SHAP — a transparent, dependency-free attribution proxy.
+    """
+    stats = bundle.get("feature_stats") or {}
+    imp = bundle.get("importances") or {}
+    scored = []
+    for f in FEATURES:
+        s = stats.get(f)
+        if not s or s["std"] <= 0:
+            continue
+        z = (float(row[f]) - s["mean"]) / s["std"]
+        contrib = abs(z) * imp.get(f, 0.0)
+        if contrib <= 0:
+            continue
+        label, hi, lo = FEATURE_LABELS.get(f, (f, f + " high", f + " low"))
+        scored.append({
+            "feature": f, "label": label,
+            "phrase": hi if z > 0 else lo,
+            "direction": "high" if z > 0 else "low",
+            "z": round(float(z), 2),
+            "weight": round(float(imp.get(f, 0.0)), 3),
+            "_c": contrib,
+        })
+    scored.sort(key=lambda d: d["_c"], reverse=True)
+    drivers = [{k: v for k, v in d.items() if k != "_c"} for d in scored[:4]]
+    if not drivers:
+        return [], None
+
+    lean = {"Buy": "leans Buy", "Sell": "leans Sell",
+            "Hold": "sees no strong edge (Hold)"}[action]
+    phrases = [d["phrase"] for d in drivers]
+    joined = phrases[0] if len(phrases) == 1 else ", ".join(phrases[:-1]) + ", and " + phrases[-1]
+    rationale = (
+        f"The model {lean} at {round(confidence * 100)}% confidence over the next "
+        f"~{bundle.get('horizon', HORIZON)} trading days, keying on {joined}. "
+        "Out-of-sample this signal has not beaten buy-and-hold, so treat it as one "
+        "input among many — not a recommendation."
+    )
+    return drivers, rationale
 
 
 def _load():
@@ -379,12 +479,17 @@ def predict(ticker: str) -> dict | None:
     buy, hold, sell = p.get(1, 0.0), p.get(0, 0.0), p.get(-1, 0.0)
     top = int(max(p, key=p.get))
     action = {1: "Buy", 0: "Hold", -1: "Sell"}[top]
+    confidence = max(buy, hold, sell)
+
+    drivers, rationale = _explain(feat.iloc[0], bundle, action, confidence)
 
     result = {
         "action": action,
         "proba": {"buy": round(buy, 3), "hold": round(hold, 3), "sell": round(sell, 3)},
-        "confidence": round(max(buy, hold, sell), 3),
+        "confidence": round(confidence, 3),
         "horizon_days": bundle.get("horizon", HORIZON),
+        "drivers": drivers,        # top feature drivers behind THIS prediction
+        "rationale": rationale,    # plain-English explainer (None if no model stats)
     }
     db.cache_set("ml", ticker, result)
     return result
