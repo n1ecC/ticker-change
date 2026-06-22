@@ -2,7 +2,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
@@ -2170,12 +2170,48 @@ def compute_momentum(ticker: str) -> dict:
     }
 
 
+def populate_popular_universe() -> tuple[int, int]:
+    tickers = [
+        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "LLY", "AVGO",
+        "UNH", "JPM", "V", "XOM", "MA", "HD", "PG", "COST", "JNJ", "NFLX",
+        "MRK", "ABBV", "CVX", "BAC", "AMD", "CRM", "PEP", "KO", "T", "WMT",
+        "ADBE", "QCOM", "WFC", "DIS", "ORCL", "CSCO", "INTC", "GE", "F", "CAT",
+        "VZ", "MCD", "PFE", "NKE", "IBM", "CMG", "MS", "GS", "TXN"
+    ]
+    
+    success_count = 0
+    def fetch_one(symbol):
+        try:
+            # We call get_or_fetch_prices to pull/update price histories in database
+            df = get_or_fetch_prices(symbol, period="2y")
+            if df is not None and not df.empty:
+                return True
+        except Exception as e:
+            print(f"Error pre-seeding {symbol}: {e}")
+        return False
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(fetch_one, tickers))
+        success_count = sum(1 for r in results if r)
+        
+    return success_count, len(tickers)
+
+
 @app.route('/momentum')
 def momentum_page():
     COST_BPS = 7.5
+    action = request.args.get('action', '')
     tab = request.args.get('tab', 'universe')
     symbol = request.args.get('symbol', '').upper().strip()
     period = request.args.get('period', 'all')
+
+    if action == 'scan_universe':
+        success_count, total_count = populate_popular_universe()
+        # Clean local cache memo so new tickers are immediately visible
+        global _PRICE_MEMO
+        with _PRICE_MEMO_LOCK:
+            _PRICE_MEMO.clear()
+        return redirect(url_for('momentum_page', tab='screener', universe_seeded='true', success_count=success_count))
 
     # 1. Fetch all symbols in database
     with db.get_conn() as conn:
@@ -2500,6 +2536,8 @@ def momentum_page():
         max_vol = float(request.args.get('max_vol', '60.0'))
         min_risk_adj = float(request.args.get('min_risk_adj', '0.5'))
         trend_filter = request.args.get('trend', 'bullish')
+        universe_seeded = request.args.get('universe_seeded', '')
+        success_count = request.args.get('success_count', '0')
 
         # Load close prices for all symbols in database
         prices = {}
@@ -2589,7 +2627,9 @@ def momentum_page():
             "max_vol": max_vol,
             "min_risk_adj": min_risk_adj,
             "trend_filter": trend_filter,
-            "total_screened": len(screened_results)
+            "total_screened": len(screened_results),
+            "universe_seeded": universe_seeded == 'true',
+            "success_count": success_count
         }
 
         return render_template(

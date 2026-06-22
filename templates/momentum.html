@@ -85,7 +85,14 @@
     </svg>
     <h3 class="text-lg font-semibold text-rose-900 dark:text-rose-100 mb-1">Execution Error</h3>
     <p class="text-sm text-rose-700 dark:text-rose-400">{{ error }}</p>
-    <a href="/" class="mt-4 inline-flex items-center justify-center px-4 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium text-sm hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors">Return Home</a>
+    <div class="mt-4 flex flex-wrap justify-center gap-3">
+      <a href="/" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium text-sm hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors">Return Home</a>
+      {% if 'No stock price data available' in error or 'No stock data available' in error or 'Insufficient price history' in error %}
+      <a href="/momentum?action=scan_universe" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white dark:text-zinc-950 font-bold text-sm transition-colors">
+        Initialize Ticker Universe
+      </a>
+      {% endif %}
+    </div>
   </div>
   {% else %}
 
@@ -525,6 +532,33 @@
   <!-- Tab Content: Momentum Screener -->
   {% if tab == 'screener' %}
   <div class="space-y-6">
+    {% if data.universe_seeded %}
+    <div class="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-500/5 p-4 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <svg class="w-5 h-5 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span class="text-sm font-semibold text-emerald-800 dark:text-emerald-400">
+          Successfully pre-seeded stock universe! Loaded price data for {{ data.success_count }} tickers.
+        </span>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Universe Sync Control Card -->
+    <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div class="space-y-0.5">
+        <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Equities Universe Cache</h3>
+        <p class="text-[11px] text-zinc-400">The screener runs against the locally cached daily stock history. Pre-seed or refresh the cache of 50 popular US equities.</p>
+      </div>
+      <a href="/momentum?action=scan_universe" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-zinc-950 dark:bg-zinc-100 text-white dark:text-zinc-900 font-bold text-xs hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors shadow-sm self-start sm:self-auto">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+        </svg>
+        Scan & Sync Popular Equities
+      </a>
+    </div>
+
     <!-- Screener Filter Form -->
     <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
       <div class="mb-4">
