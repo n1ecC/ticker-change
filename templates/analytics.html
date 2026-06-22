@@ -383,6 +383,23 @@
         </div>
       </div>
       {% endfor %}
+
+      {% if data.ml.rationale %}
+      <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <p class="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5">Why</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed mb-2">{{ data.ml.rationale }}</p>
+        {% if data.ml.drivers %}
+        <div class="flex flex-wrap gap-1.5">
+          {% for d in data.ml.drivers %}
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"
+                title="{{ d.phrase }} · {{ d.z }}σ from typical · model weight {{ (d.weight * 100) | round(0, 'common') }}%">
+            {{ d.label }} <span class="{% if d.direction == 'high' %}text-emerald-500{% else %}text-rose-500{% endif %}">{% if d.direction == 'high' %}&uarr;{% else %}&darr;{% endif %}</span>
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
     {% endif %}
   </div>
