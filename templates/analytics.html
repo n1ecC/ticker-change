@@ -11,6 +11,13 @@
   .ai-report li { margin: 0.15rem 0; }
   .ai-report strong { color: inherit; font-weight: 600; }
   .ai-report em { color: #71717a; }
+  
+  .ai-inline-summary p { margin-bottom: 0.5rem; }
+  .ai-inline-summary p:last-child { margin-bottom: 0; }
+  .ai-inline-summary ul { list-style: disc; padding-left: 1.1rem; margin: 0.25rem 0; }
+  .ai-inline-summary li { margin: 0.15rem 0; }
+  .ai-inline-summary strong { color: inherit; font-weight: 600; }
+  .ai-inline-summary em { color: #71717a; }
 </style>
 {% endblock %}
 
@@ -58,6 +65,18 @@
     </a>
   </div>
 </div>
+
+{% if data.ai_sections and data.ai_sections.bottom_line %}
+<div class="mb-8 p-6 rounded-xl border border-amber-300/40 dark:border-amber-500/20 bg-amber-50/20 dark:bg-amber-500/5 backdrop-blur-md">
+  <div class="flex items-center gap-2 font-bold text-sm text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">
+    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+    <span>AI Summary & Bottom Line Buyer Signal</span>
+  </div>
+  <div class="ai-inline-summary text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
+    {{ data.ai_sections.bottom_line | safe }}
+  </div>
+</div>
+{% endif %}
 
 <!-- Risk stat cards -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -134,6 +153,17 @@
     </div>
     {% endif %}
   </div>
+  {% if data.ai_sections and data.ai_sections.valuation %}
+  <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+    <div class="flex items-center gap-1.5 font-semibold text-xs text-indigo-500 dark:text-indigo-400 mb-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>AI Fundamental Analysis & Multiples Valuation</span>
+    </div>
+    <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+      {{ data.ai_sections.valuation | safe }}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -256,6 +286,17 @@
       ES (CVaR) is the <em>average</em> loss when you <em>do</em> breach VaR: a more conservative tail-risk metric.
     </p>
     {{ data.charts.var | safe }}
+    {% if data.ai_sections and data.ai_sections.risks %}
+    <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+      <div class="flex items-center gap-1.5 font-semibold text-xs text-rose-500 dark:text-rose-400 mb-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <span>AI Risk & Expected Tail Shortfall Assessment</span>
+      </div>
+      <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        {{ data.ai_sections.risks | safe }}
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -400,6 +441,17 @@
         {% endif %}
       </div>
       {% endif %}
+      {% if data.ai_sections and data.ai_sections.technical %}
+      <div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+        <div class="flex items-center gap-1.5 font-semibold text-xs text-amber-500 dark:text-amber-400 mb-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          <span>AI Technical Indicators & Volatility Insight</span>
+        </div>
+        <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          {{ data.ai_sections.technical | safe }}
+        </div>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -482,6 +534,17 @@
     <p class="text-[11px] text-zinc-400 mt-2 leading-relaxed">
       <span class="font-semibold">Reading it:</span> Above the γ-flip, dealers are net-long gamma and hedge <em>against</em> moves (vol-dampening, mean-reverting). Below it they are net-short gamma and hedge <em>with</em> moves (trend-amplifying). The call wall often caps rallies; the put wall often cushions selloffs. The dropdown switches between back-to-back Call/Put bars and a single <span class="text-emerald-400">Net</span> bar, and toggles $5 strike binning; the <span class="text-indigo-400">cumulative</span> line (top axis) crosses zero at the γ-flip and steepens where gamma is most concentrated. Naive end-of-day model on delayed yfinance OI — directional, not an institutional feed.
     </p>
+    {% if data.ai_sections and data.ai_sections.options %}
+    <div class="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+      <div class="flex items-center gap-1.5 font-semibold text-xs text-emerald-500 dark:text-emerald-400 mb-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>AI Options Positioning & Market Maker Hedging Signal</span>
+      </div>
+      <div class="ai-inline-summary text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        {{ data.ai_sections.options | safe }}
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 

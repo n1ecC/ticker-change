@@ -1668,7 +1668,12 @@ def analytics_page():
     data['ml'] = ml.predict(ticker)
 
     # AI analyst report — reads everything above, including the ML signal
-    data['ai_report'] = ai.generate_report(ticker, data)
+    ai_report_html = ai.generate_report(ticker, data)
+    data['ai_report'] = ai_report_html
+    if ai_report_html:
+        data['ai_sections'] = ai.parse_html_sections(ai_report_html)
+    else:
+        data['ai_sections'] = None
 
     return render_template('analytics.html', data=data, ticker=ticker)
 
@@ -2066,6 +2071,102 @@ def _relative_stats(strat, bench, rf_annual=RF_ANNUAL):
         "beta": round(beta, 2),
         "info_ratio": round(info, 2),
         "corr": round(df["s"].corr(df["b"]), 2),
+    }
+
+
+def compute_momentum(ticker: str) -> dict:
+    """Compute momentum scores and backtest statistics for a ticker."""
+    symbol = ticker.upper()
+    df = db.get_prices(symbol)
+    if df is None or len(df) < 273:
+        return {}
+
+    close = df['close']
+    daily_rets = close.pct_change()
+    
+    p_latest = close.iloc[-1]
+    p_21 = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
+    p_63 = close.iloc[-64] if len(close) >= 64 else close.iloc[0]
+    p_126 = close.iloc[-127] if len(close) >= 127 else close.iloc[0]
+    p_252 = close.iloc[-253] if len(close) >= 253 else close.iloc[0]
+
+    mom_12_1 = (p_21 - p_252) / p_252 if p_252 > 0 else 0.0
+    mom_6m = (p_latest - p_126) / p_126 if p_126 > 0 else 0.0
+    mom_3m = (p_latest - p_63) / p_63 if p_63 > 0 else 0.0
+    mom_1m = (p_latest - p_21) / p_21 if p_21 > 0 else 0.0
+
+    vol_window = daily_rets.iloc[-252:].std() * np.sqrt(252)
+    ann_vol_1y = float(vol_window) if pd.notna(vol_window) and vol_window > 0 else 0.0
+    risk_adj_mom = round(mom_12_1 / ann_vol_1y, 2) if ann_vol_1y > 0 else 0.0
+
+    # Backtest stats
+    roll_score = close.shift(21) / close.shift(252) - 1
+    signal = np.where(roll_score > 0, 1.0, 0.0)
+    signal = pd.Series(signal, index=df.index).shift(1).fillna(0.0)
+
+    trades = signal.diff().abs().fillna(0.0)
+    cost_bps = 7.5 / 1e4
+    strat_rets = signal * daily_rets - trades * cost_bps
+
+    strat_series = strat_rets.iloc[253:]
+    hold_series = daily_rets.iloc[253:]
+    trade_signals = signal.iloc[253:]
+
+    strat_stats = _perf_stats(strat_series)
+    hold_stats = _perf_stats(hold_series)
+
+    pct_invested = round(float(trade_signals.mean()) * 100, 1) if len(trade_signals) else 0.0
+
+    # Trade records
+    trade_records = []
+    in_trade = False
+    entry_idx = 0
+    backtest_start_idx = df.index.get_loc(df.index[253])
+
+    for idx in range(len(trade_signals)):
+        sig = trade_signals.iloc[idx]
+        if sig == 1 and not in_trade:
+            in_trade = True
+            entry_idx = idx
+        elif sig == 0 and in_trade:
+            in_trade = False
+            ret_val = close.iloc[backtest_start_idx + idx] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps * 2
+            trade_records.append(ret_val)
+
+    if in_trade:
+        ret_val = close.iloc[-1] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps
+        trade_records.append(ret_val)
+
+    trade_count = len(trade_records)
+    wins = [r for r in trade_records if r > 0]
+    losses = [r for r in trade_records if r <= 0]
+
+    win_rate = round(len(wins) / trade_count * 100, 1) if trade_count > 0 else 0.0
+    profit_factor = round(sum(wins) / abs(sum(losses)), 2) if losses and sum(losses) != 0.0 else (99.0 if wins else 0.0)
+
+    # Relative stats
+    spy_df = get_or_fetch_prices("SPY")
+    rel = {"alpha": 0.0, "beta": 0.0, "info_ratio": 0.0, "corr": 0.0}
+    if spy_df is not None:
+        spy_rets = spy_df["close"].pct_change().dropna()
+        merged = pd.concat([strat_series, spy_rets], axis=1, join="inner")
+        if len(merged) > 30:
+            rel = _relative_stats(merged.iloc[:, 0], merged.iloc[:, 1])
+
+    return {
+        "mom_12_1": round(mom_12_1 * 100, 2),
+        "mom_6m": round(mom_6m * 100, 2),
+        "mom_3m": round(mom_3m * 100, 2),
+        "mom_1m": round(mom_1m * 100, 2),
+        "ann_vol_1y": round(ann_vol_1y * 100, 2),
+        "risk_adj_mom": risk_adj_mom,
+        "strat_stats": strat_stats,
+        "hold_stats": hold_stats,
+        "pct_invested": pct_invested,
+        "trade_count": trade_count,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "relative_spy": rel,
     }
 
 
@@ -2637,6 +2738,92 @@ def options_greeks_api(ticker):
         return jsonify({"error": f"Could not retrieve options data for {ticker}"}), 404
         
     return jsonify(data)
+
+
+@app.route('/ai-summary')
+def ai_summary_page():
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return render_template('ai_summary.html', data=None, ticker='')
+
+    # Load all statistics and data points
+    analytics_data = compute_analytics(ticker)
+    if analytics_data is None:
+        return render_template('ai_summary.html', data=None, ticker=ticker,
+                               error=f"Could not retrieve data for {ticker}")
+
+    # Gather fundamentals & positioning
+    positioning_data = compute_positioning(ticker)
+    fundamentals = get_fundamentals(ticker) or {}
+
+    # Merge finnhub metrics (list of dicts) and yfinance fundamentals into a single dict
+    valuation_dict = {}
+    finnhub_val = positioning_data.get("valuation")
+    if finnhub_val and isinstance(finnhub_val, list):
+        for item in finnhub_val:
+            valuation_dict[item["label"]] = item["value"]
+    if fundamentals:
+        for k, v in fundamentals.items():
+            if k not in valuation_dict:
+                valuation_dict[k] = v
+
+    # Gather momentum data
+    momentum_data = compute_momentum(ticker)
+
+    # Gather ML signal
+    ml_signal = ml.predict(ticker)
+
+    # Gather GEX stats
+    gex_profile = get_gex_profile(ticker, analytics_data['current_price'])
+    gex_stats = gex_profile['stats'] if gex_profile else None
+
+    # Merge all stats into a single context payload
+    # Remove charts and figures so we only feed clean numbers to the LLM (and stay within limits / keep it clean)
+    payload = {
+        "ticker": ticker,
+        "current_price": analytics_data.get("current_price"),
+        "general_stats": analytics_data.get("stats"),
+        "forward_estimates": analytics_data.get("forward_estimates"),
+        "valuation": valuation_dict,
+        "recommendations": positioning_data.get("recommendations"),
+        "insider_sentiment": positioning_data.get("insider", {}).get("sentiment"),
+        "insider_transactions": positioning_data.get("insider", {}).get("transactions"),
+        "sec_filings": positioning_data.get("insider", {}).get("sec_filings"),
+        "institutional_holders": positioning_data.get("institutional", {}).get("holders"),
+        "momentum": {
+            "mom_12_1_pct": momentum_data.get("mom_12_1"),
+            "mom_6m_pct": momentum_data.get("mom_6m"),
+            "mom_3m_pct": momentum_data.get("mom_3m"),
+            "mom_1m_pct": momentum_data.get("mom_1m"),
+            "ann_vol_1y_pct": momentum_data.get("ann_vol_1y"),
+            "risk_adjusted_mom_score": momentum_data.get("risk_adj_mom"),
+            "strategy_annual_return_pct": momentum_data.get("strat_stats", {}).get("annual_return"),
+            "strategy_sharpe": momentum_data.get("strat_stats", {}).get("sharpe"),
+            "strategy_max_dd_pct": momentum_data.get("strat_stats", {}).get("max_dd"),
+            "hold_annual_return_pct": momentum_data.get("hold_stats", {}).get("annual_return"),
+            "hold_sharpe": momentum_data.get("hold_stats", {}).get("sharpe"),
+            "hold_max_dd_pct": momentum_data.get("hold_stats", {}).get("max_dd"),
+            "percent_invested": momentum_data.get("pct_invested"),
+            "trade_count": momentum_data.get("trade_count"),
+            "win_rate_pct": momentum_data.get("win_rate"),
+            "profit_factor": momentum_data.get("profit_factor"),
+            "relative_to_spy": momentum_data.get("relative_spy"),
+        },
+        "ml_signal": ml_signal,
+        "dealer_gex": gex_stats,
+    }
+
+    # Generate or fetch the comprehensive strategy report
+    comprehensive_report = ai.generate_comprehensive_report(ticker, payload)
+
+    # We also pass the clean payload to the page so it can render the raw tables as well!
+    return render_template(
+        'ai_summary.html',
+        ticker=ticker,
+        data=payload,
+        report=comprehensive_report,
+        configured=bool(providers.ai_providers()),
+    )
 
 
 if __name__ == '__main__':

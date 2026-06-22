@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% from "_macros.html" import metric %}
+{% block title %}AI Strategy Builder — {{ ticker }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Markdown styling for the AI report block */
+  .ai-strategy-report h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 1.5rem 0 0.5rem;
+    color: #e4e4e7;
+    border-bottom: 1px solid #27272a;
+    padding-bottom: 0.25rem;
+  }
+  .light .ai-strategy-report h3 {
+    color: #27272a;
+    border-bottom-color: #e4e4e7;
+  }
+  .ai-strategy-report h3:first-child {
+    margin-top: 0;
+  }
+  .ai-strategy-report p {
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+  }
+  .ai-strategy-report ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0.5rem 0 1rem;
+  }
+  .ai-strategy-report li {
+    margin: 0.25rem 0;
+  }
+  .ai-strategy-report strong {
+    color: inherit;
+    font-weight: 600;
+  }
+  .ai-strategy-report em {
+    color: #a1a1aa;
+  }
+  .light .ai-strategy-report em {
+    color: #71717a;
+  }
+  
+  /* Style Markdown tables inside the AI report block */
+  .ai-strategy-report table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.8rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+  .ai-strategy-report th {
+    background-color: #18181b;
+    color: #a1a1aa;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid #27272a;
+  }
+  .light .ai-strategy-report th {
+    background-color: #f4f4f5;
+    color: #71717a;
+    border-bottom-color: #e4e4e7;
+  }
+  .ai-strategy-report td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #27272a;
+    color: #d4d4d8;
+  }
+  .light .ai-strategy-report td {
+    border-bottom-color: #e4e4e7;
+    color: #27272a;
+  }
+  .ai-strategy-report tr:hover {
+    background-color: rgba(24, 24, 27, 0.5);
+  }
+  .light .ai-strategy-report tr:hover {
+    background-color: rgba(244, 244, 245, 0.5);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Search bar -->
+<div class="mb-8">
+  <form method="get" action="/ai-summary" class="flex gap-3 max-w-sm">
+    <input
+      type="text"
+      name="ticker"
+      value="{{ ticker }}"
+      placeholder="Enter ticker (e.g. AAPL)"
+      class="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm font-mono uppercase"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button
+      type="submit"
+      class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors"
+    >Generate</button>
+  </form>
+</div>
+
+{% if error %}
+<div class="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-6 py-4 text-rose-700 dark:text-rose-300 text-sm">
+  {{ error }}
+</div>
+
+{% elif ticker and not configured %}
+<div class="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/10 dark:bg-amber-950/20 p-6 max-w-2xl mx-auto text-center">
+  <svg class="w-12 h-12 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+  </svg>
+  <h2 class="text-lg font-semibold mb-2">No AI Keys Configured</h2>
+  <p class="text-sm text-zinc-400 mb-6">
+    To generate the comprehensive strategist report, you need to configure an API key for Anthropic, OpenAI, or Google Gemini.
+  </p>
+  <a href="/settings" class="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors">
+    Go to settings
+  </a>
+</div>
+
+{% elif data %}
+<!-- Header -->
+<div class="flex flex-wrap items-baseline gap-3 mb-6">
+  <h1 class="text-3xl font-bold tracking-tight">AI Strategy Builder · {{ data.ticker }}</h1>
+  <span class="text-2xl font-mono font-semibold text-zinc-500 dark:text-zinc-400">${{ "%.2f"|format(data.current_price) }}</span>
+  <span class="text-xs font-mono px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 text-zinc-400">Hedge Fund Strategy Mode</span>
+</div>
+
+<!-- Tabs navigation -->
+<div class="border-b border-zinc-200 dark:border-zinc-800 mb-6">
+  <nav class="flex gap-6 text-sm font-semibold" aria-label="Tabs">
+    <button id="tab-report-btn" class="border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200">
+      AI Quantitative Strategy Report
+    </button>
+    <button id="tab-data-btn" class="border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200">
+      Raw System Data
+    </button>
+  </nav>
+</div>
+
+<!-- Tab 1: AI Quantitative Strategy Report -->
+<div id="tab-report" class="block space-y-6">
+  {% if report %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 sm:p-8">
+    <div class="ai-strategy-report text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed space-y-2">
+      {{ report | safe }}
+    </div>
+  </div>
+  {% else %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-12 text-center">
+    <svg class="animate-spin w-8 h-8 text-amber-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+    <h3 class="text-sm font-semibold mb-1">Generating Strategy Report...</h3>
+    <p class="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+      Feeding 10 dimensions of cached price, vol, risk, dealer GEX walls, seasonality, ML signals, and holder transactions to the LLM. This may take 20–40 seconds.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Tab 2: Raw System Data -->
+<div id="tab-data" class="hidden space-y-8">
+  <!-- General Price, Vol & Risk Metrics -->
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Price, Volatility & Risk Metrics</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+      {% set stats = [
+        ('Current Price', '$' ~ "%.2f"|format(data.current_price)),
+        ('Annual Volatility', data.general_stats.annualised_vol ~ '%'),
+        ('Max Drawdown', data.general_stats.max_drawdown ~ '%'),
+        ('Jensen Beta', data.general_stats.beta or 'N/A'),
+        ('Daily Return Mean', data.general_stats.mean_daily_return ~ '%'),
+        ('Daily Return Std', data.general_stats.daily_std ~ '%'),
+        ('Skewness', data.general_stats.skewness),
+        ('Kurtosis', data.general_stats.kurtosis),
+        ('Value-at-Risk 95%', (data.general_stats.var_95 | abs | round(2)) ~ '%' if data.general_stats.var_95 is not none else 'N/A'),
+        ('Value-at-Risk 99%', (data.general_stats.var_99 | abs | round(2)) ~ '%' if data.general_stats.var_99 is not none else 'N/A'),
+        ('POC Price (Volume)', '$' ~ data.general_stats.poc_price if data.general_stats.poc_price else 'N/A'),
+        ('Data Points Count', data.general_stats.data_points),
+      ] %}
+      {% for label, val in stats %}
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
+        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Valuation & consensus estimates -->
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Valuation Multiples & consensus estimates</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+      {% set PE = data.valuation.get('P/E (TTM)') if data.valuation else None %}
+      {% set PB = data.valuation.get('P/B') if data.valuation else None %}
+      {% set PS = data.valuation.get('P/S (TTM)') if data.valuation else None %}
+      {% set DY = data.valuation.get('Div Yield') if data.valuation else None %}
+      {% set short_float = data.valuation.get('Short % Float') if data.valuation else None %}
+      {% set metrics = [
+        ('Sector', data.valuation.get('Sector') if data.valuation else 'N/A'),
+        ('Industry', data.valuation.get('Industry') if data.valuation else 'N/A'),
+        ('P/E (TTM)', PE if PE else 'N/A'),
+        ('P/B', PB if PB else 'N/A'),
+        ('P/S (TTM)', PS if PS else 'N/A'),
+        ('Div Yield', DY if DY else 'N/A'),
+        ('Short % Float', short_float if short_float else 'N/A'),
+        ('Consensus Reco', data.recommendations.period if data.recommendations else 'N/A'),
+      ] %}
+      {% for label, val in metrics %}
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
+        <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-50 truncate" title="{{ val }}">{{ val }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Dealer GEX profile -->
+  {% if data.dealer_gex %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Options & Dealer GEX Profile</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      {% set gex_stats = [
+        ('Regime', data.dealer_gex.regime | upper),
+        ('Total GEX ($M)', data.dealer_gex.total_gex ~ ' $M'),
+        ('Call Wall Strike', '$' ~ data.dealer_gex.call_wall if data.dealer_gex.call_wall else 'N/A'),
+        ('Gamma Flip Trigger', '$' ~ data.dealer_gex.gamma_flip if data.dealer_gex.gamma_flip else 'N/A'),
+        ('Put Wall Strike', '$' ~ data.dealer_gex.put_wall if data.dealer_gex.put_wall else 'N/A'),
+      ] %}
+      {% for label, val in gex_stats %}
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
+        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Momentum and backtest alpha -->
+  {% if data.momentum %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Momentum & Strategy Backtest Statistics</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+      {% set mom_stats = [
+        ('12-1 Momentum Return', data.momentum.mom_12_1_pct ~ '%'),
+        ('6-Month return', data.momentum.mom_6m_pct ~ '%'),
+        ('Risk-Adj Mom Score', data.momentum.risk_adjusted_mom_score),
+        ('Strategy CAGR', data.momentum.strategy_annual_return_pct ~ '%'),
+        ('Strategy Sharpe', data.momentum.strategy_sharpe),
+        ('Strategy Max Drawdown', data.momentum.strategy_max_dd_pct ~ '%'),
+        ('Buy & Hold CAGR', data.momentum.hold_annual_return_pct ~ '%'),
+        ('Buy & Hold Sharpe', data.momentum.hold_sharpe),
+        ('Win Rate', data.momentum.win_rate_pct ~ '%'),
+        ('Profit Factor', data.momentum.profit_factor),
+        ('Backtest Alpha (SPY)', data.momentum.relative_to_spy.alpha ~ '%' if data.momentum.relative_to_spy else 'N/A'),
+        ('Backtest Beta (SPY)', data.momentum.relative_to_spy.beta if data.momentum.relative_to_spy else 'N/A'),
+      ] %}
+      {% for label, val in mom_stats %}
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
+        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Machine Learning signal -->
+  {% if data.ml_signal %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">ML Model Signal</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      {% set ml_stats = [
+        ('Model Action', data.ml_signal.action | upper),
+        ('Confidence', (data.ml_signal.confidence * 100) | round(1) ~ '%'),
+        ('Buy Probability', (data.ml_signal.proba.buy * 100) | round(1) ~ '%'),
+        ('Hold Probability', (data.ml_signal.proba.hold * 100) | round(1) ~ '%'),
+        ('Sell Probability', (data.ml_signal.proba.sell * 100) | round(1) ~ '%'),
+      ] %}
+      {% for label, val in ml_stats %}
+      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
+        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+<!-- Empty state -->
+<div class="flex flex-col items-center justify-center py-24 text-center">
+  <svg class="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+      d="M13 10V3L4 14h7v7l9-11h-7z"/>
+  </svg>
+  <p class="text-zinc-400 dark:text-zinc-600 text-sm">Enter a ticker above to compile dataset and build AI Quant Strategy.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Simple tab toggle script
+  const reportBtn = document.getElementById('tab-report-btn');
+  const dataBtn = document.getElementById('tab-data-btn');
+  const reportTab = document.getElementById('tab-report');
+  const dataTab = document.getElementById('tab-data');
+
+  if (reportBtn && dataBtn) {
+    reportBtn.addEventListener('click', () => {
+      // Toggle button states
+      reportBtn.className = "border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200";
+      dataBtn.className = "border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200";
+      
+      // Toggle tab visibility
+      reportTab.classList.remove('hidden');
+      reportTab.classList.add('block');
+      dataTab.classList.remove('block');
+      dataTab.classList.add('hidden');
+    });
+
+    dataBtn.addEventListener('click', () => {
+      // Toggle button states
+      dataBtn.className = "border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200";
+      reportBtn.className = "border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200";
+      
+      // Toggle tab visibility
+      dataTab.classList.remove('hidden');
+      dataTab.classList.add('block');
+      reportTab.classList.remove('block');
+      reportTab.classList.add('hidden');
+    });
+  }
+</script>
+{% endblock %}

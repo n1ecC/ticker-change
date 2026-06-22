@@ -181,7 +181,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center gap-6">
-            <a href="/" class="inline-flex items-center gap-2.5 group">
+            <a id="brand-link" href="/" class="inline-flex items-center gap-2.5 group">
               <svg class="w-4 h-4 text-amber-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <rect x="1" y="9" width="3" height="6" rx="1"/>
                 <rect x="6.5" y="5" width="3" height="10" rx="1"/>
@@ -193,6 +193,7 @@
             <a id="nav-positioning" href="/positioning" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Positioning</a>
             <a id="nav-live" href="/live" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Live Microstructure</a>
             <a id="nav-momentum" href="/momentum" class="text-sm text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold transition-colors">Momentum Alpha</a>
+            <a id="nav-ai-summary" href="/ai-summary" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">AI Strategy</a>
             <a href="/glossary" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Glossary</a>
           </div>
           <div class="flex items-center gap-2">
@@ -221,7 +222,6 @@
 
     <footer class="text-center text-zinc-400 dark:text-zinc-600 pb-8 mt-12 space-y-1">
       <p class="text-xs uppercase tracking-wider">Powered by yfinance &middot; Real-time market data</p>
-      <p class="text-xs uppercase tracking-wider">Built with Cursor</p>
     </footer>
 
     <script>
@@ -265,9 +265,11 @@
         if (!ticker) return;
 
         const links = {
+          'brand-link':      '/stock?ticker=' + ticker,
           'nav-analytics':   '/analytics?ticker=' + ticker,
           'nav-positioning': '/positioning?ticker=' + ticker,
           'nav-live':        '/live?ticker=' + ticker,
+          'nav-ai-summary':  '/ai-summary?ticker=' + ticker,
         };
         Object.entries(links).forEach(([id, href]) => {
           const el = document.getElementById(id);
