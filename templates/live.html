@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import metric %}
 
 {% block title %}Live Market Microstructure & Option Greeks - Ticker-Change{% endblock %}
 
@@ -124,7 +125,7 @@
     
     <!-- Spread Card -->
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
-      <p class="text-xs font-medium text-zinc-400">Bid-Ask Spread</p>
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Bid-Ask Spread', 'spread') }}</p>
       <div class="flex items-baseline gap-2 mt-1">
         <span id="spread-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
         <span id="spread-pct" class="text-xs text-zinc-500 dark:text-zinc-400 font-mono">(--)</span>
@@ -133,7 +134,7 @@
     
     <!-- VWAP Card -->
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
-      <p class="text-xs font-medium text-zinc-400">Session VWAP</p>
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Session VWAP', 'vwap') }}</p>
       <div class="flex items-baseline gap-2 mt-1">
         <span id="vwap-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
       </div>
@@ -141,7 +142,7 @@
 
     <!-- Volatility Card -->
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
-      <p class="text-xs font-medium text-zinc-400">Realized Volatility (5m)</p>
+      <p class="text-xs font-medium text-zinc-400">{{ metric('Realized Volatility (5m)', 'realized_vol') }}</p>
       <div class="flex items-baseline gap-2 mt-1">
         <span id="vol-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
       </div>
@@ -199,7 +200,7 @@
       <!-- L2 Order Book (Middle 5 columns) -->
       <div class="lg:col-span-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[600px] overflow-hidden">
         <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
-          <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Level 2 Depth (Order Book)</h2>
+          <h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">{{ metric('Level 2 Depth (Order Book)', 'order_book') }}</h2>
           <div class="flex gap-2">
             <span class="px-2 py-0.5 text-[9px] font-bold bg-emerald-500/10 text-emerald-500 rounded uppercase">Bids</span>
             <span class="px-2 py-0.5 text-[9px] font-bold bg-rose-500/10 text-rose-500 rounded uppercase">Asks</span>
@@ -210,7 +211,7 @@
         <div class="px-5 py-2 border-b border-zinc-200 dark:border-zinc-800 flex flex-col gap-1.5 text-xs bg-zinc-50/50 dark:bg-zinc-900/20">
           <div class="flex justify-between font-semibold">
             <span class="text-emerald-500 font-mono" id="imbalance-bid-pct">50.0%</span>
-            <span class="text-zinc-400">Order Book Imbalance</span>
+            <span class="text-zinc-400">{{ metric('Order Book Imbalance', 'order_book_imbalance') }}</span>
             <span class="text-rose-500 font-mono" id="imbalance-ask-pct">50.0%</span>
           </div>
           <div class="w-full h-2 bg-zinc-200 dark:bg-zinc-850 rounded-full overflow-hidden flex">
@@ -256,22 +257,22 @@
           
           <div class="space-y-4 text-sm">
             <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
-              <span class="text-zinc-400 font-medium">Mid Price</span>
+              <span class="text-zinc-400 font-medium">{{ metric('Mid Price', 'mid_price') }}</span>
               <span id="stat-mid" class="font-mono font-bold text-zinc-800 dark:text-zinc-200">--</span>
             </div>
             
             <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
-              <span class="text-zinc-400 font-medium">Spread Width</span>
+              <span class="text-zinc-400 font-medium">{{ metric('Spread Width', 'spread') }}</span>
               <span id="stat-spread" class="font-mono font-bold text-zinc-800 dark:text-zinc-200">--</span>
             </div>
             
             <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
-              <span class="text-zinc-400 font-medium">Bids Depth (<span id="bid-levels-label">15</span> levels)</span>
+              <span class="text-zinc-400 font-medium">{{ metric('Bids Depth', 'market_depth') }} (<span id="bid-levels-label">15</span> levels)</span>
               <span id="stat-bid-depth" class="font-mono font-bold text-emerald-500">--</span>
             </div>
             
             <div class="flex justify-between items-center pb-3 border-b border-zinc-150 dark:border-zinc-850">
-              <span class="text-zinc-400 font-medium">Asks Depth (<span id="ask-levels-label">15</span> levels)</span>
+              <span class="text-zinc-400 font-medium">{{ metric('Asks Depth', 'market_depth') }} (<span id="ask-levels-label">15</span> levels)</span>
               <span id="stat-ask-depth" class="font-mono font-bold text-rose-500">--</span>
             </div>
             
@@ -288,7 +289,7 @@
     <!-- Market Depth (full-width row) -->
     <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex flex-col h-[380px]">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Market Depth</h3>
+        <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">{{ metric('Market Depth', 'market_depth') }}</h3>
         <span class="text-[10px] uppercase font-bold text-zinc-400">Cumulative size · <span id="depth-levels-label">15</span> levels / side</span>
       </div>
       <div id="depth-chart" class="w-full flex-1"></div>
@@ -368,10 +369,10 @@
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">Greeks Visualizer</h3>
             <div class="flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg">
-              <button onclick="switchGreeksChart('delta')" id="chart-tab-delta" class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500">Delta</button>
-              <button onclick="switchGreeksChart('gamma')" id="chart-tab-gamma" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Gamma</button>
-              <button onclick="switchGreeksChart('iv')" id="chart-tab-iv" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Smile</button>
-              <button onclick="switchGreeksChart('gex')" id="chart-tab-gex" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">GEX</button>
+              <button onclick="switchGreeksChart('delta')" id="chart-tab-delta" title="{{ GLOSSARY.delta.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500">Delta</button>
+              <button onclick="switchGreeksChart('gamma')" id="chart-tab-gamma" title="{{ GLOSSARY.gamma.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Gamma</button>
+              <button onclick="switchGreeksChart('iv')" id="chart-tab-iv" title="{{ GLOSSARY.iv_smile.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Smile</button>
+              <button onclick="switchGreeksChart('gex')" id="chart-tab-gex" title="{{ GLOSSARY.gex.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">GEX</button>
             </div>
           </div>
           
@@ -380,7 +381,7 @@
 
         <!-- Payoff Simulator -->
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex-1 flex flex-col">
-          <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50 mb-3">Options Payoff Simulator</h3>
+          <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50 mb-3">{{ metric('Options Payoff Simulator', 'payoff') }}</h3>
           
           <!-- Input Controls -->
           <div class="grid grid-cols-2 gap-3 mb-4 text-xs">

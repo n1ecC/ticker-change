@@ -17,7 +17,7 @@
       </p>
     </div>
     <div class="flex items-center gap-2 self-start md:self-auto px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold text-xs tracking-wider uppercase">
-      ⚡ Sharpe 2.40 Alpha
+      ⚡ {{ header_badge or 'Quant Momentum' }}
     </div>
   </div>
 
@@ -153,7 +153,7 @@
       <div class="p-5 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
         <div>
           <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-50">Momentum Leaderboard</h2>
-          <p class="text-[11px] text-zinc-400 mt-0.5">Ranked by 12-1 momentum factor scores</p>
+          <p class="text-[11px] text-zinc-400 mt-0.5">Ranked by 12-1 momentum · Risk-Adj = return ÷ annualised volatility</p>
         </div>
         <div class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
           Monthly Rebalance
@@ -167,6 +167,8 @@
               <th class="py-3 px-4 w-12 text-center">Rank</th>
               <th class="py-3 px-4">Ticker</th>
               <th class="py-3 px-4 text-right">12-1 Return</th>
+              <th class="py-3 px-4 text-right">Ann Vol</th>
+              <th class="py-3 px-4 text-right">Risk-Adj</th>
               <th class="py-3 px-4 text-center">Action/Role</th>
             </tr>
           </thead>
@@ -184,6 +186,8 @@
               <td class="py-3.5 px-4 font-mono text-right font-semibold {% if r.score >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
                 {{ '+' if r.score >= 0 }}{{ r.score }}%
               </td>
+              <td class="py-3.5 px-4 font-mono text-right text-zinc-500 dark:text-zinc-400">{{ r.vol }}%</td>
+              <td class="py-3.5 px-4 font-mono text-right font-semibold {% if r.risk_adj >= 0 %}text-zinc-700 dark:text-zinc-200{% else %}text-rose-500{% endif %}">{{ r.risk_adj }}</td>
               <td class="py-3.5 px-4 text-center">
                 {% if is_top_5 %}
                 <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30">
@@ -221,13 +225,13 @@
         <h3 class="font-bold text-zinc-900 dark:text-zinc-50 mb-3">Alpha Generation Summary</h3>
         <div class="space-y-3 text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">
           <p>
-            🚀 <strong class="text-zinc-900 dark:text-zinc-100">Outperformance Profile:</strong> Over the tested period ({{ data.start_date }} to {{ data.end_date }}), the 12-1 Momentum Strategy returned a cumulative <strong class="text-amber-500">{{ data.strat_stats.total_return }}%</strong>, vastly outperforming the S&P 500 benchmark (<strong class="text-zinc-800 dark:text-zinc-200">{{ data.spy_stats.total_return }}%</strong>) and the technology-heavy Nasdaq 100 (<strong class="text-zinc-800 dark:text-zinc-200">{{ data.qqq_stats.total_return }}%</strong>).
+            🚀 <strong class="text-zinc-900 dark:text-zinc-100">Performance Profile:</strong> Over {{ data.start_date }} → {{ data.end_date }}, the 12-1 Momentum strategy returned a cumulative <strong class="text-amber-500">{{ data.strat_stats.total_return }}%</strong> ({{ data.strat_stats.annual_return }}% CAGR) and {{ data.verdict }} — S&P 500 at <strong class="text-zinc-800 dark:text-zinc-200">{{ data.spy_stats.total_return }}%</strong> and Nasdaq 100 at <strong class="text-zinc-800 dark:text-zinc-200">{{ data.qqq_stats.total_return }}%</strong> over the same window.
           </p>
           <p>
-            🛡️ <strong class="text-zinc-900 dark:text-zinc-100">Risk-Adjusted Efficiency (Sharpe):</strong> While Nasdaq 100 and S&P 500 delivered Sharpe ratios of ~1.45 and ~1.34, respectively, the rebalanced momentum strategy registered an exceptional Sharpe of <strong class="text-amber-500">{{ data.strat_stats.sharpe }}</strong>. This indicates the return profile was extremely consistent and well-compensated for its volatility.
+            🛡️ <strong class="text-zinc-900 dark:text-zinc-100">Risk-Adjusted Efficiency:</strong> Sharpe <strong class="text-amber-500">{{ data.strat_stats.sharpe }}</strong> and Sortino <strong class="text-amber-500">{{ data.strat_stats.sortino }}</strong> vs SPY's {{ data.spy_stats.sharpe }} / QQQ's {{ data.qqq_stats.sharpe }} Sharpe (all net of a {{ data.rf_annual }}% risk-free rate). Versus the S&P 500 the strategy carried a beta of <strong class="text-zinc-800 dark:text-zinc-200">{{ data.rel_spy.beta }}</strong>, generated <strong class="{% if data.rel_spy.alpha >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">{{ data.rel_spy.alpha }}%</strong> annualised alpha, and posted an information ratio of <strong class="text-amber-500">{{ data.rel_spy.info_ratio }}</strong>.
           </p>
           <p>
-            ⚠️ <strong class="text-zinc-900 dark:text-zinc-100">Execution & Risks:</strong> Rebalancing occurs every 21 trading days (monthly). Drawdowns are typically contained near benchmark levels (-26.5% max drawdown vs QQQ's -22.8%). Note that transaction costs of 7.5 bps are fully deducted at every rebalance event to ensure realistic, net-of-cost returns.
+            ⚠️ <strong class="text-zinc-900 dark:text-zinc-100">Execution & Risks:</strong> Monthly (21-day) rebalance, equal-weight top 5, ~{{ data.avg_turnover }}% annual one-way turnover. Worst drawdown was <strong class="text-rose-500">{{ data.strat_stats.max_dd }}%</strong> (Calmar {{ data.strat_stats.calmar }}); SPY {{ data.spy_stats.max_dd }}%, QQQ {{ data.qqq_stats.max_dd }}%. Costs of {{ '%.1f' % 7.5 }} bps are charged on traded notional at each rebalance. <em class="text-zinc-400">Backtest on a fixed large-cap universe — survivorship and small-sample caveats apply; not investment advice.</em>
           </p>
         </div>
       </div>
@@ -300,7 +304,7 @@
       <h3 class="text-2xl font-bold mt-1 text-zinc-900 dark:text-zinc-50 {% if data.mom_12_1 >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
         {{ '+' if data.mom_12_1 >= 0 }}{{ data.mom_12_1 }}%
       </h3>
-      <p class="text-[10px] text-zinc-400 mt-1">1yr return excluding last 21 trading days</p>
+      <p class="text-[10px] text-zinc-400 mt-1">1yr return ex-last 21d · risk-adj {{ data.risk_adj_mom }} (vol {{ data.ann_vol_1y }}%)</p>
     </div>
     
     <!-- Stat 2: Trend State -->
@@ -380,7 +384,7 @@
       </div>
 
       <!-- Trade Execution Stats Grid -->
-      <div class="grid grid-cols-3 gap-4 my-6 text-center">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 my-6 text-center">
         <div class="p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-xl border border-zinc-100 dark:border-zinc-800/80">
           <span class="text-[10px] text-zinc-400 uppercase block font-sans font-medium">Number of Trades</span>
           <span class="text-lg font-mono font-bold text-zinc-900 dark:text-zinc-100">
@@ -399,6 +403,12 @@
             {{ data.profit_factor }}
           </span>
         </div>
+        <div class="p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-xl border border-zinc-100 dark:border-zinc-800/80">
+          <span class="text-[10px] text-zinc-400 uppercase block font-sans font-medium">Time Invested</span>
+          <span class="text-lg font-mono font-bold text-indigo-500 dark:text-indigo-400">
+            {{ data.pct_invested }}%
+          </span>
+        </div>
       </div>
       
       <!-- Backtest Stat Table -->
@@ -408,10 +418,12 @@
             <tr>
               <th class="py-2.5 px-4 font-sans">Strategy</th>
               <th class="py-2.5 px-4 text-right">Total Return</th>
-              <th class="py-2.5 px-4 text-right">Annual Return</th>
+              <th class="py-2.5 px-4 text-right">CAGR</th>
               <th class="py-2.5 px-4 text-right">Volatility</th>
               <th class="py-2.5 px-4 text-right">Sharpe</th>
+              <th class="py-2.5 px-4 text-right">Sortino</th>
               <th class="py-2.5 px-4 text-right">Max DD</th>
+              <th class="py-2.5 px-4 text-right">Calmar</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800/50">
@@ -421,7 +433,9 @@
               <td class="py-3 px-4 text-right">{{ data.strat_stats.annual_return }}%</td>
               <td class="py-3 px-4 text-right">{{ data.strat_stats.volatility }}%</td>
               <td class="py-3 px-4 text-right font-bold text-amber-500 dark:text-amber-400">{{ data.strat_stats.sharpe }}</td>
+              <td class="py-3 px-4 text-right">{{ data.strat_stats.sortino }}</td>
               <td class="py-3 px-4 text-right text-rose-500">{{ data.strat_stats.max_dd }}%</td>
+              <td class="py-3 px-4 text-right">{{ data.strat_stats.calmar }}</td>
             </tr>
             <tr class="text-zinc-500 dark:text-zinc-400">
               <td class="py-3 px-4 font-sans font-semibold">Buy & Hold {{ data.symbol }}</td>
@@ -429,7 +443,9 @@
               <td class="py-3 px-4 text-right">{{ data.hold_stats.annual_return }}%</td>
               <td class="py-3 px-4 text-right">{{ data.hold_stats.volatility }}%</td>
               <td class="py-3 px-4 text-right font-bold">{{ data.hold_stats.sharpe }}</td>
+              <td class="py-3 px-4 text-right">{{ data.hold_stats.sortino }}</td>
               <td class="py-3 px-4 text-right text-rose-500">{{ data.hold_stats.max_dd }}%</td>
+              <td class="py-3 px-4 text-right">{{ data.hold_stats.calmar }}</td>
             </tr>
           </tbody>
         </table>
