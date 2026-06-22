@@ -170,13 +170,14 @@ def _openai_compatible_report(base_url: str, key: str, model: str, user_msg: str
         timeout=HTTP_TIMEOUT,
     )
     if resp.status_code != 200:
-        print(f"[ai] {base_url} -> HTTP {resp.status_code}: {resp.text[:200]}")
-        return None
+        raise Exception(f"HTTP {resp.status_code}: {resp.text[:300]}")
     choices = (resp.json() or {}).get("choices") or []
     if not choices:
-        return None
+        raise Exception(f"No choices returned by model API. Response: {resp.text[:300]}")
     content = (choices[0].get("message") or {}).get("content")
-    return content.strip() if content else None
+    if not content:
+        raise Exception(f"Model returned empty content choice. Response: {resp.text[:300]}")
+    return content.strip()
 
 
 def generate_report(ticker: str, data: dict) -> str | None:
@@ -255,22 +256,23 @@ Rules:
 """
 
 
-def generate_comprehensive_report(ticker: str, data: dict) -> str | None:
-    """Return an HTML comprehensive quantitative strategy report for `ticker`, or None if unavailable."""
+def generate_comprehensive_report(ticker: str, data: dict) -> tuple[str | None, str | None]:
+    """Return an HTML comprehensive quantitative strategy report for `ticker` and any error message as a tuple (html, error)."""
     ticker = ticker.upper()
     configured = providers.ai_providers()
     if not configured:
-        return None
+        return None, "No AI providers configured. Please go to Settings to add an API key."
 
     cached = db.cache_get("ai_comprehensive_report", ticker, CACHE_TTL_HOURS)
     if cached is not None:
-        return cached.get("html")
+        return cached.get("html"), None
 
     user_msg = (
         f"Write the comprehensive quantitative strategy report for {ticker} from this dataset:\n\n"
         f"{json.dumps(data, default=str, indent=2)}"
     )
 
+    errors = []
     text, used = None, None
     for prov in configured:
         try:
@@ -280,16 +282,20 @@ def generate_comprehensive_report(ticker: str, data: dict) -> str | None:
                 text = _openai_compatible_report(
                     prov["base_url"], prov["key"], prov["model"], user_msg, COMPREHENSIVE_SYSTEM
                 )
+            if not text:
+                errors.append(f"{prov['label']} ({prov['model']}) returned empty content.")
         except Exception as e:
+            err_msg = f"{prov['label']} ({prov['model']}) failed: {str(e)}"
             print(f"AI comprehensive report via {prov['id']} failed for {ticker}: {e}")
-            text = None
+            errors.append(err_msg)
         if text:
             used = prov["id"]
             break
 
     if not text:
-        return None
+        err_report = "All configured AI providers failed to generate the report:\n- " + "\n- ".join(errors)
+        return None, err_report
 
     html = _to_html(text)
     db.cache_set("ai_comprehensive_report", ticker, {"html": html, "provider": used})
-    return html
+    return html, None

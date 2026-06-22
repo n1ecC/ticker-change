@@ -4,308 +4,801 @@
 
 {% block head_extra %}
 <style>
-  /* Markdown styling for the AI report block */
-  .ai-strategy-report h3 {
-    font-size: 0.95rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 1.5rem 0 0.5rem;
-    color: #e4e4e7;
-    border-bottom: 1px solid #27272a;
-    padding-bottom: 0.25rem;
+  /* Define colors and variables for our premium Excel-styled page */
+  .excel-theme {
+    background-color: #ffffff !important;
+    color: #0f172a !important; /* Near-black */
+    font-family: 'Inter', -apple-system, sans-serif !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05) !important;
+    overflow: hidden;
   }
-  .light .ai-strategy-report h3 {
-    color: #27272a;
-    border-bottom-color: #e4e4e7;
+
+  /* Force background colors on all child elements to avoid leaking dark mode dark-zinc background */
+  .excel-theme,
+  .excel-theme div,
+  .excel-theme section,
+  .excel-theme p,
+  .excel-theme h1,
+  .excel-theme h2,
+  .excel-theme h3,
+  .excel-theme h4,
+  .excel-theme span {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
   }
-  .ai-strategy-report h3:first-child {
-    margin-top: 0;
+
+  /* Toolbar */
+  .excel-toolbar {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    padding: 12px 16px !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
   }
-  .ai-strategy-report p {
-    margin-bottom: 0.75rem;
-    line-height: 1.6;
-  }
-  .ai-strategy-report ul {
-    list-style: disc;
-    padding-left: 1.25rem;
-    margin: 0.5rem 0 1rem;
-  }
-  .ai-strategy-report li {
-    margin: 0.25rem 0;
-  }
-  .ai-strategy-report strong {
-    color: inherit;
-    font-weight: 600;
-  }
-  .ai-strategy-report em {
-    color: #a1a1aa;
-  }
-  .light .ai-strategy-report em {
-    color: #71717a;
+
+  /* Sheet tabs container resembling actual Excel workbook sheets tabs */
+  .excel-tabs-container {
+    display: flex;
+    background-color: #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-bottom: none !important;
+    padding: 6px 6px 0 6px !important;
+    margin-top: 12px !important;
+    margin-bottom: 0 !important;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
   }
   
-  /* Style Markdown tables inside the AI report block */
+  .excel-tab-btn {
+    padding: 6px 14px !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: #475569 !important;
+    background-color: #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-bottom: none !important;
+    margin-right: 3px !important;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  
+  .excel-tab-btn:hover {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+  
+  .excel-tab-btn.active {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    border-top: 3px solid #16a34a !important; /* Excel Green accent */
+    border-bottom: 1px solid #ffffff !important;
+    margin-bottom: -1px !important;
+    padding-top: 4px !important;
+  }
+
+  /* Markdown report overrides to look clean and print-ready */
+  .ai-strategy-report {
+    font-family: 'Inter', sans-serif !important;
+    color: #334155 !important;
+    background-color: #ffffff !important;
+  }
+
+  .ai-strategy-report h3 {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    margin: 1.75rem 0 0.75rem !important;
+    color: #0f172a !important;
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 0.25rem !important;
+    background-color: #ffffff !important;
+  }
+
+  .ai-strategy-report h3:first-child {
+    margin-top: 0 !important;
+  }
+  
+  .ai-strategy-report p {
+    margin-bottom: 0.75rem !important;
+    line-height: 1.6 !important;
+    font-size: 0.875rem !important;
+    background-color: #ffffff !important;
+    color: #334155 !important;
+  }
+  
+  .ai-strategy-report ul {
+    list-style: disc !important;
+    padding-left: 1.25rem !important;
+    margin: 0.5rem 0 1rem !important;
+    background-color: #ffffff !important;
+  }
+  
+  .ai-strategy-report li {
+    margin: 0.25rem 0 !important;
+    font-size: 0.875rem !important;
+    background-color: #ffffff !important;
+    color: #334155 !important;
+  }
+
+  .ai-strategy-report strong {
+    color: #0f172a !important;
+    font-weight: 600 !important;
+  }
+
+  .ai-strategy-report em {
+    color: #475569 !important;
+    font-style: italic !important;
+  }
+
+  /* Excel tables styling */
+  .excel-sheet-card {
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+    margin-bottom: 24px !important;
+  }
+
+  .excel-sheet-title-bar {
+    background-color: #f1f5f9 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    padding: 8px 16px !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .excel-sheet-title-bar span {
+    background-color: transparent !important;
+  }
+
+  .excel-grid-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+    background-color: #ffffff !important;
+  }
+
+  .excel-grid-table th, 
+  .excel-grid-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 10px !important;
+  }
+
+  /* Grid column indicators A, B, C... */
+  .excel-col-header {
+    background-color: #f8fafc !important;
+    color: #64748b !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+    user-select: none !important;
+    border-bottom: 2px solid #cbd5e1 !important;
+  }
+
+  /* Grid row indicators 1, 2, 3... */
+  .excel-row-header {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+    width: 32px !important;
+    user-select: none !important;
+  }
+
+  /* Excel standard cell styling */
+  .excel-cell-label {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    font-weight: 500 !important;
+  }
+
+  .excel-cell-val {
+    background-color: #ffffff !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  }
+
+  /* Excel Industry Colors */
+  .excel-blue-input {
+    color: #1d4ed8 !important; /* Blue for Hardcoded Inputs */
+    font-weight: 600 !important;
+  }
+  
+  .excel-black-calc {
+    color: #0f172a !important; /* Black for Formula Calculations */
+    font-weight: 500 !important;
+  }
+
+  .excel-green-pos {
+    color: #15803d !important; /* Green for long/positive wall regimes */
+    font-weight: 600 !important;
+  }
+  
+  .excel-green-pos-bg {
+    background-color: #f0fdf4 !important; /* Soft Green fill */
+  }
+
+  .excel-red-risk {
+    color: #b91c1c !important; /* Red for drawdowns/VaR/put walls */
+    font-weight: 600 !important;
+  }
+  
+  .excel-red-risk-bg {
+    background-color: #fef2f2 !important; /* Soft Red fill */
+  }
+
+  .excel-warning-bg {
+    background-color: #fffbeb !important; /* Soft yellow alert fill */
+  }
+
+  /* Accounting formatting underline */
+  .excel-double-underline {
+    border-bottom: 3px double #0f172a !important;
+  }
+
+  /* Tables generated inside the Markdown report */
   .ai-strategy-report table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1rem 0;
-    font-size: 0.8rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 1rem 0 !important;
+    font-size: 11px !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
+    border: 1px solid #cbd5e1 !important;
+    background-color: #ffffff !important;
   }
+
   .ai-strategy-report th {
-    background-color: #18181b;
-    color: #a1a1aa;
-    font-weight: 600;
-    text-align: left;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 2px solid #27272a;
+    background-color: #f1f5f9 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+    padding: 6px 10px !important;
+    border: 1px solid #cbd5e1 !important;
+    text-align: left !important;
   }
-  .light .ai-strategy-report th {
-    background-color: #f4f4f5;
-    color: #71717a;
-    border-bottom-color: #e4e4e7;
-  }
+
   .ai-strategy-report td {
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #27272a;
-    color: #d4d4d8;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 10px !important;
   }
-  .light .ai-strategy-report td {
-    border-bottom-color: #e4e4e7;
-    color: #27272a;
-  }
-  .ai-strategy-report tr:hover {
-    background-color: rgba(24, 24, 27, 0.5);
-  }
-  .light .ai-strategy-report tr:hover {
-    background-color: rgba(244, 244, 245, 0.5);
+
+  /* Print Media Overrides */
+  @media print {
+    body, html {
+      background: #ffffff !important;
+      color: #000000 !important;
+    }
+    nav, footer, .no-print, #theme-toggle {
+      display: none !important;
+    }
+    .excel-theme {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+    }
+    main {
+      padding: 0 !important;
+      margin: 0 !important;
+      max-width: 100% !important;
+    }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Search bar -->
-<div class="mb-8">
-  <form method="get" action="/ai-summary" class="flex gap-3 max-w-sm">
-    <input
-      type="text"
-      name="ticker"
-      value="{{ ticker }}"
-      placeholder="Enter ticker (e.g. AAPL)"
-      class="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm font-mono uppercase"
-      autocomplete="off"
-      spellcheck="false"
-    />
-    <button
-      type="submit"
-      class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors"
-    >Generate</button>
-  </form>
-</div>
-
-{% if error %}
-<div class="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-6 py-4 text-rose-700 dark:text-rose-300 text-sm">
-  {{ error }}
-</div>
-
-{% elif ticker and not configured %}
-<div class="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/10 dark:bg-amber-950/20 p-6 max-w-2xl mx-auto text-center">
-  <svg class="w-12 h-12 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-  </svg>
-  <h2 class="text-lg font-semibold mb-2">No AI Keys Configured</h2>
-  <p class="text-sm text-zinc-400 mb-6">
-    To generate the comprehensive strategist report, you need to configure an API key for Anthropic, OpenAI, or Google Gemini.
-  </p>
-  <a href="/settings" class="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors">
-    Go to settings
-  </a>
-</div>
-
-{% elif data %}
-<!-- Header -->
-<div class="flex flex-wrap items-baseline gap-3 mb-6">
-  <h1 class="text-3xl font-bold tracking-tight">AI Strategy Builder · {{ data.ticker }}</h1>
-  <span class="text-2xl font-mono font-semibold text-zinc-500 dark:text-zinc-400">${{ "%.2f"|format(data.current_price) }}</span>
-  <span class="text-xs font-mono px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 text-zinc-400">Hedge Fund Strategy Mode</span>
-</div>
-
-<!-- Tabs navigation -->
-<div class="border-b border-zinc-200 dark:border-zinc-800 mb-6">
-  <nav class="flex gap-6 text-sm font-semibold" aria-label="Tabs">
-    <button id="tab-report-btn" class="border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200">
-      AI Quantitative Strategy Report
-    </button>
-    <button id="tab-data-btn" class="border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200">
-      Raw System Data
-    </button>
-  </nav>
-</div>
-
-<!-- Tab 1: AI Quantitative Strategy Report -->
-<div id="tab-report" class="block space-y-6">
-  {% if report %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 sm:p-8">
-    <div class="ai-strategy-report text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed space-y-2">
-      {{ report | safe }}
-    </div>
-  </div>
-  {% else %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-12 text-center">
-    <svg class="animate-spin w-8 h-8 text-amber-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-    </svg>
-    <h3 class="text-sm font-semibold mb-1">Generating Strategy Report...</h3>
-    <p class="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
-      Feeding 10 dimensions of cached price, vol, risk, dealer GEX walls, seasonality, ML signals, and holder transactions to the LLM. This may take 20–40 seconds.
-    </p>
-  </div>
-  {% endif %}
-</div>
-
-<!-- Tab 2: Raw System Data -->
-<div id="tab-data" class="hidden space-y-8">
-  <!-- General Price, Vol & Risk Metrics -->
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Price, Volatility & Risk Metrics</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-      {% set stats = [
-        ('Current Price', '$' ~ "%.2f"|format(data.current_price)),
-        ('Annual Volatility', data.general_stats.annualised_vol ~ '%'),
-        ('Max Drawdown', data.general_stats.max_drawdown ~ '%'),
-        ('Jensen Beta', data.general_stats.beta or 'N/A'),
-        ('Daily Return Mean', data.general_stats.mean_daily_return ~ '%'),
-        ('Daily Return Std', data.general_stats.daily_std ~ '%'),
-        ('Skewness', data.general_stats.skewness),
-        ('Kurtosis', data.general_stats.kurtosis),
-        ('Value-at-Risk 95%', (data.general_stats.var_95 | abs | round(2)) ~ '%' if data.general_stats.var_95 is not none else 'N/A'),
-        ('Value-at-Risk 99%', (data.general_stats.var_99 | abs | round(2)) ~ '%' if data.general_stats.var_99 is not none else 'N/A'),
-        ('POC Price (Volume)', '$' ~ data.general_stats.poc_price if data.general_stats.poc_price else 'N/A'),
-        ('Data Points Count', data.general_stats.data_points),
-      ] %}
-      {% for label, val in stats %}
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
-        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
-        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+<div class="excel-theme">
+  <!-- Excel-like Title / Header bar -->
+  <div class="excel-toolbar no-print">
+    <div class="flex items-center gap-3">
+      <!-- Excel Green logo block -->
+      <div class="w-8 h-8 rounded bg-green-700 flex items-center justify-center text-white font-bold text-base font-mono shadow-sm">X</div>
+      <div>
+        <h1 class="text-sm font-bold tracking-tight text-slate-800 flex items-center gap-2">
+          ticker-change_strategy_workbook.xlsx
+        </h1>
+        <p class="text-[9px] text-slate-400 font-mono">Status: Formatted Financial Model &bull; Macro Enabled &bull; 100% Zoom</p>
       </div>
-      {% endfor %}
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <button onclick="window.print()" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-xs flex items-center gap-1.5 transition-colors bg-white shadow-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.844l-.234-.117a2.25 2.25 0 00-3.155 1.022l-.128.257a2.25 2.25 0 001.022 3.155l.117.234M12 3v12m0 0l-3-3m3 3l3-3M21 21H3" />
+        </svg>
+        Print / PDF Workbook
+      </button>
     </div>
   </div>
 
-  <!-- Valuation & consensus estimates -->
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Valuation Multiples & consensus estimates</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-      {% set PE = data.valuation.get('P/E (TTM)') if data.valuation else None %}
-      {% set PB = data.valuation.get('P/B') if data.valuation else None %}
-      {% set PS = data.valuation.get('P/S (TTM)') if data.valuation else None %}
-      {% set DY = data.valuation.get('Div Yield') if data.valuation else None %}
-      {% set short_float = data.valuation.get('Short % Float') if data.valuation else None %}
-      {% set metrics = [
-        ('Sector', data.valuation.get('Sector') if data.valuation else 'N/A'),
-        ('Industry', data.valuation.get('Industry') if data.valuation else 'N/A'),
-        ('P/E (TTM)', PE if PE else 'N/A'),
-        ('P/B', PB if PB else 'N/A'),
-        ('P/S (TTM)', PS if PS else 'N/A'),
-        ('Div Yield', DY if DY else 'N/A'),
-        ('Short % Float', short_float if short_float else 'N/A'),
-        ('Consensus Reco', data.recommendations.period if data.recommendations else 'N/A'),
-      ] %}
-      {% for label, val in metrics %}
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
-        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
-        <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-50 truncate" title="{{ val }}">{{ val }}</p>
+  <div class="p-6">
+    <!-- Search bar inside the theme sheet -->
+    <div class="mb-6 no-print bg-slate-50 p-4 rounded border border-slate-300 flex flex-wrap gap-4 items-center justify-between">
+      <form method="get" action="/ai-summary" class="flex gap-3 max-w-sm w-full">
+        <input
+          type="text"
+          name="ticker"
+          value="{{ ticker }}"
+          placeholder="Enter ticker (e.g. AAPL)"
+          class="flex-1 px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 text-sm font-mono uppercase"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button
+          type="submit"
+          class="px-4 py-1.5 rounded bg-green-700 hover:bg-green-600 text-white font-semibold text-sm transition-colors shadow-sm"
+        >Recalculate</button>
+      </form>
+      
+      {% if data %}
+      <div class="flex items-center gap-3 text-xs font-mono">
+        <span class="text-slate-400">SPOT PRICE:</span>
+        <span class="font-bold text-blue-600 text-sm">${{ "%.2f"|format(data.current_price) }}</span>
       </div>
-      {% endfor %}
+      {% endif %}
     </div>
-  </div>
 
-  <!-- Dealer GEX profile -->
-  {% if data.dealer_gex %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Options & Dealer GEX Profile</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
-      {% set gex_stats = [
-        ('Regime', data.dealer_gex.regime | upper),
-        ('Total GEX ($M)', data.dealer_gex.total_gex ~ ' $M'),
-        ('Call Wall Strike', '$' ~ data.dealer_gex.call_wall if data.dealer_gex.call_wall else 'N/A'),
-        ('Gamma Flip Trigger', '$' ~ data.dealer_gex.gamma_flip if data.dealer_gex.gamma_flip else 'N/A'),
-        ('Put Wall Strike', '$' ~ data.dealer_gex.put_wall if data.dealer_gex.put_wall else 'N/A'),
-      ] %}
-      {% for label, val in gex_stats %}
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
-        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
-        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
-      </div>
-      {% endfor %}
+    {% if error %}
+    <div class="rounded border border-red-300 bg-red-50 p-4 text-red-700 text-xs font-mono">
+      [ERROR CODE: DE-091] {{ error }}
     </div>
-  </div>
-  {% endif %}
 
-  <!-- Momentum and backtest alpha -->
-  {% if data.momentum %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Momentum & Strategy Backtest Statistics</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-      {% set mom_stats = [
-        ('12-1 Momentum Return', data.momentum.mom_12_1_pct ~ '%'),
-        ('6-Month return', data.momentum.mom_6m_pct ~ '%'),
-        ('Risk-Adj Mom Score', data.momentum.risk_adjusted_mom_score),
-        ('Strategy CAGR', data.momentum.strategy_annual_return_pct ~ '%'),
-        ('Strategy Sharpe', data.momentum.strategy_sharpe),
-        ('Strategy Max Drawdown', data.momentum.strategy_max_dd_pct ~ '%'),
-        ('Buy & Hold CAGR', data.momentum.hold_annual_return_pct ~ '%'),
-        ('Buy & Hold Sharpe', data.momentum.hold_sharpe),
-        ('Win Rate', data.momentum.win_rate_pct ~ '%'),
-        ('Profit Factor', data.momentum.profit_factor),
-        ('Backtest Alpha (SPY)', data.momentum.relative_to_spy.alpha ~ '%' if data.momentum.relative_to_spy else 'N/A'),
-        ('Backtest Beta (SPY)', data.momentum.relative_to_spy.beta if data.momentum.relative_to_spy else 'N/A'),
-      ] %}
-      {% for label, val in mom_stats %}
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
-        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
-        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
-      </div>
-      {% endfor %}
+    {% elif ticker and not configured %}
+    <div class="rounded border border-amber-300 bg-amber-50/50 p-6 text-center max-w-xl mx-auto">
+      <h2 class="text-sm font-bold mb-2 text-slate-800">[WARNING: AI_API_KEYS_MISSING]</h2>
+      <p class="text-xs text-slate-500 mb-4 leading-relaxed font-mono">
+        To compile the desk note and strategy report, you need to configure an API key for Anthropic, OpenAI, or Google Gemini.
+      </p>
+      <a href="/settings" class="inline-flex items-center justify-center px-4 py-2 rounded bg-green-700 hover:bg-green-600 text-white font-semibold text-xs transition-colors shadow-sm">
+        Open settings.xlsx
+      </a>
     </div>
-  </div>
-  {% endif %}
 
-  <!-- Machine Learning signal -->
-  {% if data.ml_signal %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-    <h3 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">ML Model Signal</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
-      {% set ml_stats = [
-        ('Model Action', data.ml_signal.action | upper),
-        ('Confidence', (data.ml_signal.confidence * 100) | round(1) ~ '%'),
-        ('Buy Probability', (data.ml_signal.proba.buy * 100) | round(1) ~ '%'),
-        ('Hold Probability', (data.ml_signal.proba.hold * 100) | round(1) ~ '%'),
-        ('Sell Probability', (data.ml_signal.proba.sell * 100) | round(1) ~ '%'),
-      ] %}
-      {% for label, val in ml_stats %}
-      <div class="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
-        <p class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">{{ label }}</p>
-        <p class="text-sm font-mono font-bold text-zinc-800 dark:text-zinc-50">{{ val }}</p>
+    {% elif data %}
+    <!-- Document Header -->
+    <div class="border-b-2 border-slate-900 pb-4 mb-6">
+      <div class="flex justify-between items-baseline">
+        <h2 class="text-2xl font-bold tracking-tight uppercase">{{ data.ticker }} - STRATEGY WORKBOOK</h2>
+        <span class="text-xs font-mono text-slate-400">MODEL GENERATION: v3.1-lite</span>
       </div>
-      {% endfor %}
+      <div class="text-[10px] text-slate-500 font-mono mt-1">
+        CONFIDENTIAL &bull; FOR INTERNAL QUANTITATIVE DESK USE ONLY
+      </div>
     </div>
+
+    <!-- Tabs navigation resembling sheet tabs -->
+    <div class="excel-tabs-container no-print">
+      <button id="tab-report-btn" class="excel-tab-btn active">
+        Sheet1: Strategy Report
+      </button>
+      <button id="tab-data-btn" class="excel-tab-btn">
+        Sheet2: Raw System Data
+      </button>
+    </div>
+
+    <!-- Tab 1: AI Quantitative Strategy Report -->
+    <div id="tab-report" class="block space-y-6 pt-4">
+      {% if report %}
+      <div class="border border-slate-300 rounded p-6 sm:p-8 bg-white">
+        <div class="ai-strategy-report text-sm leading-relaxed space-y-2">
+          {{ report | safe }}
+        </div>
+      </div>
+      {% elif report_error %}
+      <div class="rounded border border-red-300 bg-red-50 p-6 text-red-700">
+        <h3 class="font-bold text-xs mb-1 uppercase">[EXECUTION_ERROR: GENERATION_FAILED]</h3>
+        <p class="text-[11px] font-mono whitespace-pre-line opacity-95">{{ report_error }}</p>
+      </div>
+      {% else %}
+      <div class="border border-slate-300 rounded p-12 text-center bg-white">
+        <svg class="animate-spin w-8 h-8 text-green-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <h3 class="text-xs font-bold mb-1 uppercase">[COMPILING_STRATEGY_DATA...]</h3>
+        <p class="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed font-mono font-bold">
+          Evaluating volatility coefficients, dealer GEX walls, ML pricing signals, and relative strength indices. Model latency may be 20–40s.
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Tab 2: Raw System Data -->
+    <div id="tab-data" class="hidden space-y-8 pt-4">
+      <!-- Sheet 1: Price, Volatility & Risk Metrics -->
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Statistics & Risk (STAT)</span>
+          <span class="text-[10px] font-mono text-slate-400">Workbook Range: A1:F4</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="excel-grid-table">
+            <thead>
+              <tr class="select-none">
+                <th class="excel-row-header"></th>
+                <th class="excel-col-header" style="width: 16%;">A</th>
+                <th class="excel-col-header" style="width: 17%;">B</th>
+                <th class="excel-col-header" style="width: 16%;">C</th>
+                <th class="excel-col-header" style="width: 17%;">D</th>
+                <th class="excel-col-header" style="width: 16%;">E</th>
+                <th class="excel-col-header" style="width: 17%;">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 -->
+              <tr>
+                <td class="excel-row-header">1</td>
+                <td class="excel-cell-label">Current Price</td>
+                <td class="excel-cell-val excel-blue-input">${{ "%.2f"|format(data.current_price) }}</td>
+                <td class="excel-cell-label">Annualized Vol</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.annualised_vol }}%</td>
+                <td class="excel-cell-val excel-red-risk excel-red-risk-bg">{{ data.general_stats.max_drawdown }}%</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr>
+                <td class="excel-row-header">2</td>
+                <td class="excel-cell-label">Jensen Beta</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.beta or 'N/A' }}</td>
+                <td class="excel-cell-label">Daily Return Mean</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.mean_daily_return }}%</td>
+                <td class="excel-cell-label">Daily Return Std</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.daily_std }}%</td>
+              </tr>
+              <!-- Row 3 -->
+              <tr>
+                <td class="excel-row-header">3</td>
+                <td class="excel-cell-label">Skewness</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.skewness }}</td>
+                <td class="excel-cell-label">Kurtosis</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.general_stats.kurtosis }}</td>
+                <td class="excel-cell-label">VaR 95% (Daily)</td>
+                <td class="excel-cell-val excel-red-risk excel-red-risk-bg">{{ (data.general_stats.var_95 | abs | round(2)) ~ '%' if data.general_stats.var_95 is not none else 'N/A' }}</td>
+              </tr>
+              <!-- Row 4 -->
+              <tr>
+                <td class="excel-row-header">4</td>
+                <td class="excel-cell-label">VaR 99% (Daily)</td>
+                <td class="excel-cell-val excel-red-risk excel-red-risk-bg">{{ (data.general_stats.var_99 | abs | round(2)) ~ '%' if data.general_stats.var_99 is not none else 'N/A' }}</td>
+                <td class="excel-cell-label">POC Price (Vol)</td>
+                <td class="excel-cell-val excel-blue-input">${{ data.general_stats.poc_price or 'N/A' }}</td>
+                <td class="excel-cell-label">Data Points</td>
+                <td class="excel-cell-val excel-blue-input">{{ data.general_stats.data_points }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sheet 2: Valuation & Consensus -->
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Valuation & consensus estimates (VAL)</span>
+          <span class="text-[10px] font-mono text-slate-400">Workbook Range: A1:F3</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="excel-grid-table">
+            <thead>
+              <tr class="select-none">
+                <th class="excel-row-header"></th>
+                <th class="excel-col-header" style="width: 16%;">A</th>
+                <th class="excel-col-header" style="width: 17%;">B</th>
+                <th class="excel-col-header" style="width: 16%;">C</th>
+                <th class="excel-col-header" style="width: 17%;">D</th>
+                <th class="excel-col-header" style="width: 16%;">E</th>
+                <th class="excel-col-header" style="width: 17%;">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set PE = data.valuation.get('P/E (TTM)') if data.valuation else None %}
+              {% set PB = data.valuation.get('P/B') if data.valuation else None %}
+              {% set PS = data.valuation.get('P/S (TTM)') if data.valuation else None %}
+              {% set DY = data.valuation.get('Div Yield') if data.valuation else None %}
+              {% set short_float = data.valuation.get('Short % Float') if data.valuation else None %}
+              <!-- Row 1 -->
+              <tr>
+                <td class="excel-row-header">1</td>
+                <td class="excel-cell-label">Sector</td>
+                <td class="excel-cell-val excel-blue-input font-sans text-xs" style="font-family: inherit !important;">{{ data.valuation.get('Sector') if data.valuation else 'N/A' }}</td>
+                <td class="excel-cell-label">Industry</td>
+                <td class="excel-cell-val excel-blue-input font-sans text-xs" style="font-family: inherit !important;" title="{{ data.valuation.get('Industry') }}">{{ data.valuation.get('Industry') if data.valuation else 'N/A' }}</td>
+                <td class="excel-cell-label">P/E (TTM)</td>
+                <td class="excel-cell-val excel-blue-input">{{ PE if PE else 'N/A' }}</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr>
+                <td class="excel-row-header">2</td>
+                <td class="excel-cell-label">P/B Ratio</td>
+                <td class="excel-cell-val excel-blue-input">{{ PB if PB else 'N/A' }}</td>
+                <td class="excel-cell-label">P/S (TTM)</td>
+                <td class="excel-cell-val excel-blue-input">{{ PS if PS else 'N/A' }}</td>
+                <td class="excel-cell-label">Div Yield</td>
+                <td class="excel-cell-val excel-blue-input">{{ DY if DY else 'N/A' }}</td>
+              </tr>
+              <!-- Row 3 -->
+              <tr>
+                <td class="excel-row-header">3</td>
+                <td class="excel-cell-label">Short % Float</td>
+                <td class="excel-cell-val excel-red-risk">{{ short_float if short_float else 'N/A' }}</td>
+                <td class="excel-cell-label">Consensus Reco</td>
+                <td class="excel-cell-val excel-black-calc font-sans" style="font-family: inherit !important;">{{ data.recommendations.period if data.recommendations else 'N/A' }}</td>
+                <td class="excel-cell-label">Consensus Buy/Hold/Sell</td>
+                <td class="excel-cell-val excel-black-calc font-sans" style="font-family: inherit !important;">
+                  {% if data.recommendations %}
+                    B: {{ data.recommendations.strong_buy + data.recommendations.buy }} | H: {{ data.recommendations.hold }} | S: {{ data.recommendations.sell + data.recommendations.strong_sell }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sheet 3: Options & GEX -->
+      {% if data.dealer_gex %}
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Options Market & Dealer GEX Profile (GEX)</span>
+          <span class="text-[10px] font-mono text-slate-400">Workbook Range: A1:F2</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="excel-grid-table">
+            <thead>
+              <tr class="select-none">
+                <th class="excel-row-header"></th>
+                <th class="excel-col-header" style="width: 16%;">A</th>
+                <th class="excel-col-header" style="width: 17%;">B</th>
+                <th class="excel-col-header" style="width: 16%;">C</th>
+                <th class="excel-col-header" style="width: 17%;">D</th>
+                <th class="excel-col-header" style="width: 16%;">E</th>
+                <th class="excel-col-header" style="width: 17%;">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set regime = data.dealer_gex.regime | upper %}
+              {% set is_pos_regime = 'POS' in regime %}
+              {% set total_gex = data.dealer_gex.total_gex %}
+              <!-- Row 1 -->
+              <tr>
+                <td class="excel-row-header">1</td>
+                <td class="excel-cell-label">GEX Regime</td>
+                <td class="excel-cell-val font-sans {% if is_pos_regime %}excel-green-pos excel-green-pos-bg{% else %}excel-red-risk excel-red-risk-bg{% endif %}" style="font-family: inherit !important;">
+                  {{ regime }}
+                </td>
+                <td class="excel-cell-label">Total GEX ($M)</td>
+                <td class="excel-cell-val {% if total_gex and total_gex > 0 %}excel-green-pos excel-green-pos-bg{% else %}excel-red-risk excel-red-risk-bg{% endif %}">
+                  {{ total_gex }} $M
+                </td>
+                <td class="excel-cell-label">Call Wall Strike</td>
+                <td class="excel-cell-val excel-blue-input">${{ data.dealer_gex.call_wall if data.dealer_gex.call_wall else 'N/A' }}</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr>
+                <td class="excel-row-header">2</td>
+                <td class="excel-cell-label">Gamma Flip Trigger</td>
+                <td class="excel-cell-val excel-black-calc">${{ data.dealer_gex.gamma_flip if data.dealer_gex.gamma_flip else 'N/A' }}</td>
+                <td class="excel-cell-label">Put Wall Strike</td>
+                <td class="excel-cell-val excel-blue-input">${{ data.dealer_gex.put_wall if data.dealer_gex.put_wall else 'N/A' }}</td>
+                <td class="excel-cell-label">Spot Deviation</td>
+                <td class="excel-cell-val excel-black-calc">
+                  {% if data.dealer_gex.gamma_flip and data.current_price %}
+                    {{ (((data.current_price / data.dealer_gex.gamma_flip) - 1) * 100) | round(2) }}% from Flip
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Sheet 4: Momentum & Backtest -->
+      {% if data.momentum %}
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Momentum & Strategy Backtest (MOM)</span>
+          <span class="text-[10px] font-mono text-slate-400">Workbook Range: A1:F4</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="excel-grid-table">
+            <thead>
+              <tr class="select-none">
+                <th class="excel-row-header"></th>
+                <th class="excel-col-header" style="width: 16%;">A</th>
+                <th class="excel-col-header" style="width: 17%;">B</th>
+                <th class="excel-col-header" style="width: 16%;">C</th>
+                <th class="excel-col-header" style="width: 17%;">D</th>
+                <th class="excel-col-header" style="width: 16%;">E</th>
+                <th class="excel-col-header" style="width: 17%;">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set win_rate = data.momentum.win_rate_pct %}
+              {% set alpha = data.momentum.relative_to_spy.alpha if data.momentum.relative_to_spy else 0 %}
+              <!-- Row 1 -->
+              <tr>
+                <td class="excel-row-header">1</td>
+                <td class="excel-cell-label">12-1 Momentum</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.mom_12_1_pct }}%</td>
+                <td class="excel-cell-label">6-Month Return</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.mom_6m_pct }}%</td>
+                <td class="excel-cell-label">Risk-Adj Mom Score</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.risk_adjusted_mom_score }}</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr>
+                <td class="excel-row-header">2</td>
+                <td class="excel-cell-label">Strategy CAGR</td>
+                <td class="excel-cell-val excel-black-calc font-bold">{{ data.momentum.strategy_annual_return_pct }}%</td>
+                <td class="excel-cell-label">Strategy Sharpe</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.strategy_sharpe }}</td>
+                <td class="excel-cell-label">Strategy Max DD</td>
+                <td class="excel-cell-val excel-red-risk excel-red-risk-bg">{{ data.momentum.strategy_max_dd_pct }}%</td>
+              </tr>
+              <!-- Row 3 -->
+              <tr>
+                <td class="excel-row-header">3</td>
+                <td class="excel-cell-label">Buy & Hold CAGR</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.hold_annual_return_pct }}%</td>
+                <td class="excel-cell-label">Buy & Hold Sharpe</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.hold_sharpe }}</td>
+                <td class="excel-cell-label">Win Rate</td>
+                <td class="excel-cell-val {% if win_rate and win_rate >= 50 %}excel-green-pos excel-green-pos-bg{% else %}excel-red-risk excel-red-risk-bg{% endif %}">{{ win_rate }}%</td>
+              </tr>
+              <!-- Row 4 -->
+              <tr>
+                <td class="excel-row-header">4</td>
+                <td class="excel-cell-label">Profit Factor</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.profit_factor }}</td>
+                <td class="excel-cell-label">Backtest Alpha (SPY)</td>
+                <td class="excel-cell-val {% if alpha and alpha > 0 %}excel-green-pos excel-green-pos-bg{% else %}excel-red-risk excel-red-risk-bg{% endif %}">{{ data.momentum.relative_to_spy.alpha ~ '%' if data.momentum.relative_to_spy else 'N/A' }}</td>
+                <td class="excel-cell-label">Backtest Beta (SPY)</td>
+                <td class="excel-cell-val excel-black-calc">{{ data.momentum.relative_to_spy.beta if data.momentum.relative_to_spy else 'N/A' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Sheet 5: Machine Learning Signal -->
+      {% if data.ml_signal %}
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Machine Learning Signal & Probabilities (ML)</span>
+          <span class="text-[10px] font-mono text-slate-400">Workbook Range: A1:F2</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="excel-grid-table">
+            <thead>
+              <tr class="select-none">
+                <th class="excel-row-header"></th>
+                <th class="excel-col-header" style="width: 16%;">A</th>
+                <th class="excel-col-header" style="width: 17%;">B</th>
+                <th class="excel-col-header" style="width: 16%;">C</th>
+                <th class="excel-col-header" style="width: 17%;">D</th>
+                <th class="excel-col-header" style="width: 16%;">E</th>
+                <th class="excel-col-header" style="width: 17%;">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set action = data.ml_signal.action | upper %}
+              {% set action_color = 'excel-green-pos excel-green-pos-bg' if 'BUY' in action else ('excel-red-risk excel-red-risk-bg' if 'SELL' in action else 'excel-black-calc') %}
+              <!-- Row 1 -->
+              <tr>
+                <td class="excel-row-header">1</td>
+                <td class="excel-cell-label">Model Action</td>
+                <td class="excel-cell-val font-sans {{ action_color }}" style="font-family: inherit !important;">{{ action }}</td>
+                <td class="excel-cell-label">Confidence</td>
+                <td class="excel-cell-val excel-black-calc">{{ (data.ml_signal.confidence * 100) | round(1) }}%</td>
+                <td class="excel-cell-label">Buy Probability</td>
+                <td class="excel-cell-val excel-black-calc">{{ (data.ml_signal.proba.buy * 100) | round(1) }}%</td>
+              </tr>
+              <!-- Row 2 -->
+              <tr>
+                <td class="excel-row-header">2</td>
+                <td class="excel-cell-label">Hold Probability</td>
+                <td class="excel-cell-val excel-black-calc">{{ (data.ml_signal.proba.hold * 100) | round(1) }}%</td>
+                <td class="excel-cell-label">Sell Probability</td>
+                <td class="excel-cell-val excel-black-calc">{{ (data.ml_signal.proba.sell * 100) | round(1) }}%</td>
+                <td class="excel-cell-label">Signal Status</td>
+                <td class="excel-cell-val excel-blue-input font-sans text-xs" style="font-family: inherit !important;">ACTIVE</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Sheet 6: Insider & Institutional Ownership -->
+      <div class="excel-sheet-card">
+        <div class="excel-sheet-title-bar">
+          <span class="font-mono text-xs font-bold text-slate-700">Sheet: Insider Trades & Institutional Top Holders (OWNERSHIP)</span>
+          <span class="text-[10px] font-mono text-slate-400">FMP &bull; SEC EDGAR</span>
+        </div>
+        <div class="p-4 grid grid-cols-1 lg:grid-cols-2 gap-6 bg-white">
+          <!-- Insider Sentiment / Transactions -->
+          <div>
+            <h4 class="font-mono text-xs font-bold text-slate-500 uppercase mb-2">Insider Transactions (Recent)</h4>
+            {% if data.insider_transactions %}
+            <table class="excel-grid-table" style="font-size: 10px !important;">
+              <thead>
+                <tr>
+                  <th class="excel-col-header text-left">Insider</th>
+                  <th class="excel-col-header text-right">Shares</th>
+                  <th class="excel-col-header text-right">Price</th>
+                  <th class="excel-col-header text-center">Filed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in data.insider_transactions[:6] %}
+                <tr>
+                  <td class="excel-cell-val font-sans truncate max-w-[120px]" style="font-family: inherit !important;">{{ t.name or '—' }}</td>
+                  <td class="excel-cell-val text-right {% if t.is_buy %}excel-green-pos excel-green-pos-bg{% else %}excel-red-risk excel-red-risk-bg{% endif %}">
+                    {{ '{:+,}'.format(t.shares) if t.shares is not none else '—' }}
+                  </td>
+                  <td class="excel-cell-val text-right">${{ '{:.2f}'.format(t.price) if t.price else '—' }}</td>
+                  <td class="excel-cell-val text-center font-mono text-[9px] text-slate-400">{{ t.filing_date or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="text-xs text-slate-400 font-mono">No insider transactions dataset available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Institutional Holders -->
+          <div>
+            <h4 class="font-mono text-xs font-bold text-slate-500 uppercase mb-2">Top 13F Institutional Holders</h4>
+            {% if data.institutional_holders %}
+            <table class="excel-grid-table" style="font-size: 10px !important;">
+              <thead>
+                <tr>
+                  <th class="excel-col-header text-left">Holder</th>
+                  <th class="excel-col-header text-right">Shares</th>
+                  <th class="excel-col-header text-right">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for h in data.institutional_holders[:6] %}
+                <tr>
+                  <td class="excel-cell-val font-sans truncate max-w-[120px]" style="font-family: inherit !important;">{{ h.holder }}</td>
+                  <td class="excel-cell-val text-right excel-black-calc">{{ '{:,}'.format(h.shares) }}</td>
+                  <td class="excel-cell-val text-right {% if h.change and h.change > 0 %}excel-green-pos excel-green-pos-bg{% elif h.change and h.change < 0 %}excel-red-risk excel-red-risk-bg{% else %}excel-black-calc{% endif %}">
+                    {{ '{:+,}'.format(h.change) if h.change else '—' }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="text-xs text-slate-400 font-mono">No institutional 13F dataset available.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
-
-{% else %}
-<!-- Empty state -->
-<div class="flex flex-col items-center justify-center py-24 text-center">
-  <svg class="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-      d="M13 10V3L4 14h7v7l9-11h-7z"/>
-  </svg>
-  <p class="text-zinc-400 dark:text-zinc-600 text-sm">Enter a ticker above to compile dataset and build AI Quant Strategy.</p>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -318,11 +811,9 @@
 
   if (reportBtn && dataBtn) {
     reportBtn.addEventListener('click', () => {
-      // Toggle button states
-      reportBtn.className = "border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200";
-      dataBtn.className = "border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200";
+      reportBtn.classList.add('active');
+      dataBtn.classList.remove('active');
       
-      // Toggle tab visibility
       reportTab.classList.remove('hidden');
       reportTab.classList.add('block');
       dataTab.classList.remove('block');
@@ -330,16 +821,52 @@
     });
 
     dataBtn.addEventListener('click', () => {
-      // Toggle button states
-      dataBtn.className = "border-b-2 border-amber-500 text-amber-500 py-3 px-1 transition duration-200";
-      reportBtn.className = "border-b-2 border-transparent text-zinc-400 hover:text-zinc-100 hover:border-zinc-700 py-3 px-1 transition duration-200";
+      dataBtn.classList.add('active');
+      reportBtn.classList.remove('active');
       
-      // Toggle tab visibility
       dataTab.classList.remove('hidden');
       dataTab.classList.add('block');
       reportTab.classList.remove('block');
       reportTab.classList.add('hidden');
     });
   }
+
+  // Color-code and style markdown generated tables within the AI report block dynamically
+  function applyExcelStylesToReport() {
+    const cells = document.querySelectorAll('.ai-strategy-report td');
+    cells.forEach(td => {
+      const text = td.textContent.trim();
+      
+      const isPercent = text.includes('%');
+      const isCurrency = text.startsWith('$');
+      const numVal = parseFloat(text.replace(/[$\s,%+]/g, ''));
+      
+      const upperText = text.toUpperCase();
+      if (upperText === 'BUY' || upperText === 'LONG' || upperText === 'BULLISH' || upperText === 'POSITIVE' || upperText === 'CALL WALL') {
+        td.style.color = '#15803d'; // Excel Green
+        td.style.fontWeight = 'bold';
+        td.style.backgroundColor = '#f0fdf4';
+      } else if (upperText === 'SELL' || upperText === 'SHORT' || upperText === 'BEARISH' || upperText === 'NEGATIVE' || upperText === 'PUT WALL') {
+        td.style.color = '#b91c1c'; // Excel Red
+        td.style.fontWeight = 'bold';
+        td.style.backgroundColor = '#fef2f2';
+      } else if (isPercent) {
+        if (text.startsWith('-') || numVal < 0) {
+          td.style.color = '#b91c1c';
+          td.style.fontWeight = 'bold';
+        } else if (text.startsWith('+') || numVal > 0) {
+          td.style.color = '#15803d';
+          td.style.fontWeight = 'bold';
+        }
+      } else if (!isNaN(numVal) && (isCurrency || text.match(/^\d+(\.\d+)?$/))) {
+        td.style.color = '#1d4ed8'; // Input Blue
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', applyExcelStylesToReport);
+  // Multi-pass safety fallback for async generated models
+  setTimeout(applyExcelStylesToReport, 200);
+  setTimeout(applyExcelStylesToReport, 1000);
 </script>
 {% endblock %}

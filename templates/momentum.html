@@ -161,42 +161,39 @@
       </div>
       
       <div class="overflow-y-auto max-h-[500px] carousel-scrollbar">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-zinc-50 dark:bg-zinc-900/50 text-xs font-medium text-zinc-400 sticky top-0">
+        <table class="w-full table-fixed text-left text-sm">
+          <thead class="bg-zinc-50 dark:bg-zinc-900/50 text-[11px] font-medium text-zinc-400 sticky top-0">
             <tr>
-              <th class="py-3 px-4 w-12 text-center">Rank</th>
-              <th class="py-3 px-4">Ticker</th>
-              <th class="py-3 px-4 text-right">12-1 Return</th>
-              <th class="py-3 px-4 text-right">Ann Vol</th>
-              <th class="py-3 px-4 text-right">Risk-Adj</th>
-              <th class="py-3 px-4 text-center">Action/Role</th>
+              <th class="py-3 px-2 w-8 text-center">#</th>
+              <th class="py-3 px-2">Ticker</th>
+              <th class="py-3 px-2 text-right whitespace-nowrap">12-1 Ret</th>
+              <th class="py-3 px-2 text-right">Vol</th>
+              <th class="py-3 px-2 text-right whitespace-nowrap">R/Adj</th>
+              <th class="py-3 px-2 text-center w-20">Signal</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800/50">
             {% for r in data.leaderboard %}
             {% set is_top_5 = r.symbol in data.top_5 %}
             <tr class="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 {% if is_top_5 %}bg-amber-500/5 hover:bg-amber-500/10{% endif %} transition-colors">
-              <td class="py-3.5 px-4 font-mono font-medium text-zinc-400 text-center">{{ r.rank }}</td>
-              <td class="py-3.5 px-4 font-semibold text-zinc-900 dark:text-zinc-50">
-                <a href="/stock?ticker={{ r.symbol }}" class="hover:text-amber-500 transition-colors flex items-center gap-1.5">
-                  {{ r.symbol }}
-                  <svg class="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                </a>
+              <td class="py-3.5 px-2 font-mono font-medium text-zinc-400 text-center">{{ r.rank }}</td>
+              <td class="py-3.5 px-2 font-semibold text-zinc-900 dark:text-zinc-50">
+                <a href="/stock?ticker={{ r.symbol }}" class="hover:text-amber-500 transition-colors">{{ r.symbol }}</a>
               </td>
-              <td class="py-3.5 px-4 font-mono text-right font-semibold {% if r.score >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+              <td class="py-3.5 px-2 font-mono text-right font-semibold whitespace-nowrap {% if r.score >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
                 {{ '+' if r.score >= 0 }}{{ r.score }}%
               </td>
-              <td class="py-3.5 px-4 font-mono text-right text-zinc-500 dark:text-zinc-400">{{ r.vol }}%</td>
-              <td class="py-3.5 px-4 font-mono text-right font-semibold {% if r.risk_adj >= 0 %}text-zinc-700 dark:text-zinc-200{% else %}text-rose-500{% endif %}">{{ r.risk_adj }}</td>
-              <td class="py-3.5 px-4 text-center">
+              <td class="py-3.5 px-2 font-mono text-right text-zinc-500 dark:text-zinc-400">{{ r.vol }}%</td>
+              <td class="py-3.5 px-2 font-mono text-right font-semibold {% if r.risk_adj >= 0 %}text-zinc-700 dark:text-zinc-200{% else %}text-rose-500{% endif %}">{{ r.risk_adj }}</td>
+              <td class="py-3.5 px-2 text-center">
                 {% if is_top_5 %}
-                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap bg-amber-500 text-white dark:bg-amber-500/20 dark:text-amber-400 border border-amber-500/30">
                   <span class="w-1.5 h-1.5 rounded-full bg-white dark:bg-amber-400 animate-pulse"></span>
-                  Active Buy
+                  Buy
                 </span>
                 {% else %}
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800">
-                  Watchlist
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap bg-zinc-100 text-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800">
+                  Watch
                 </span>
                 {% endif %}
               </td>
