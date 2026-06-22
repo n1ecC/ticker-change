@@ -1899,6 +1899,7 @@ def momentum_page():
     COST_BPS = 7.5
     tab = request.args.get('tab', 'universe')
     symbol = request.args.get('symbol', '').upper().strip()
+    period = request.args.get('period', 'all')
 
     # 1. Fetch all symbols in database
     with db.get_conn() as conn:
@@ -1984,6 +1985,28 @@ def momentum_page():
         backtest_dates = df.index[253:]
         strat_series = strat_rets.iloc[253:]
         hold_series = daily_rets.iloc[253:]
+        trade_signals = signal.iloc[253:]
+        
+        # Apply timeframe filter if requested
+        if period != 'all':
+            latest_date = df.index[-1]
+            if period == '3y':
+                start_cutoff = latest_date - pd.DateOffset(years=3)
+            elif period == '1y':
+                start_cutoff = latest_date - pd.DateOffset(years=1)
+            elif period == '6m':
+                start_cutoff = latest_date - pd.DateOffset(months=6)
+            elif period == '3m':
+                start_cutoff = latest_date - pd.DateOffset(months=3)
+            else:
+                start_cutoff = backtest_dates[0]
+                
+            mask = backtest_dates >= start_cutoff
+            if mask.any() and mask.sum() >= 10:
+                backtest_dates = backtest_dates[mask]
+                strat_series = strat_series[mask]
+                hold_series = hold_series[mask]
+                trade_signals = trade_signals[mask]
         
         # Compute performance stats
         def get_stats(series):
@@ -2015,8 +2038,6 @@ def momentum_page():
         # Convert index to string for guaranteed clean parsing in Plotly
         backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
         
-        # Extract trade signals
-        trade_signals = signal.iloc[253:]
         trade_dates = backtest_dates
         sig_diff = trade_signals.diff().fillna(0.0)
         
@@ -2032,6 +2053,7 @@ def momentum_page():
         trade_records = []
         in_trade = False
         entry_idx = 0
+        backtest_start_idx = df.index.get_loc(backtest_dates[0])
         
         for idx in range(len(trade_signals)):
             sig = trade_signals.iloc[idx]
@@ -2040,11 +2062,11 @@ def momentum_page():
                 entry_idx = idx
             elif sig == 0 and in_trade:
                 in_trade = False
-                ret_val = close.iloc[253 + idx] / close.iloc[253 + entry_idx] - 1 - cost_bps * 2
+                ret_val = close.iloc[backtest_start_idx + idx] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps * 2
                 trade_records.append(ret_val)
                 
         if in_trade:
-            ret_val = close.iloc[-1] / close.iloc[253 + entry_idx] - 1 - cost_bps
+            ret_val = close.iloc[-1] / close.iloc[backtest_start_idx + entry_idx] - 1 - cost_bps
             trade_records.append(ret_val)
             
         trade_count = len(trade_records)
@@ -2120,8 +2142,15 @@ def momentum_page():
         
         # Plotly chart: Rolling 12-1 Momentum Score
         valid_score = roll_score.iloc[253:] * 100
+        roll_dates = df.index[253:]
+        if period != 'all':
+            mask_roll = roll_dates >= start_cutoff
+            if mask_roll.any():
+                roll_dates = roll_dates[mask_roll]
+                valid_score = valid_score[mask_roll]
+        
         fig_roll = go.Figure()
-        fig_roll.add_trace(go.Scatter(x=df.index[253:].strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
+        fig_roll.add_trace(go.Scatter(x=roll_dates.strftime('%Y-%m-%d').tolist(), y=valid_score.tolist(), mode='lines', name='12-1 Momentum %', line=dict(color='#818cf8', width=1.5)))
         fig_roll.add_hline(
             y=0,
             line_dash='dash',
@@ -2180,6 +2209,7 @@ def momentum_page():
             tab='ticker',
             available_symbols=available_symbols,
             searched_symbol=symbol,
+            period=period,
             error=None
         )
 
@@ -2257,6 +2287,29 @@ def momentum_page():
     spy_series = daily_rets["SPY"].loc[backtest_dates] if "SPY" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
     qqq_series = daily_rets["QQQ"].loc[backtest_dates] if "QQQ" in daily_rets.columns else pd.Series(0.0, index=backtest_dates)
     
+    # Apply timeframe filter if requested
+    if period != 'all':
+        latest_date = price_df.index[-1]
+        if period == '3y':
+            start_cutoff = latest_date - pd.DateOffset(years=3)
+        elif period == '1y':
+            start_cutoff = latest_date - pd.DateOffset(years=1)
+        elif period == '6m':
+            start_cutoff = latest_date - pd.DateOffset(months=6)
+        elif period == '3m':
+            start_cutoff = latest_date - pd.DateOffset(months=3)
+        else:
+            start_cutoff = backtest_dates[0]
+            
+        mask = backtest_dates >= start_cutoff
+        if mask.any() and mask.sum() >= 10:
+            backtest_dates = backtest_dates[mask]
+            strat_series = strat_series[mask]
+            if "SPY" in daily_rets.columns:
+                spy_series = spy_series[mask]
+            if "QQQ" in daily_rets.columns:
+                qqq_series = qqq_series[mask]
+    
     # Compute stats
     def get_stats(series):
         cum = (1 + series).prod() - 1
@@ -2328,6 +2381,7 @@ def momentum_page():
         tab='universe',
         available_symbols=available_symbols,
         searched_symbol='',
+        period=period,
         error=None
     )
 
