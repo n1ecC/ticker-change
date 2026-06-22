@@ -114,7 +114,7 @@ AI_PROVIDERS = (
     {"id": "gemini",     "label": "Google Gemini",      "env": "GEMINI_API_KEY",
      "setting": "gemini_api_key",
      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-     "model": "gemini-3.1-lite"},
+     "model": "gemini-3.1-flash-lite"},
     {"id": "openrouter", "label": "OpenRouter",         "env": "OPENROUTER_API_KEY",
      "setting": "openrouter_api_key", "base_url": "https://openrouter.ai/api/v1",
      "model": "anthropic/claude-opus-4-8"},
