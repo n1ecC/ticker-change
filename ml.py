@@ -322,6 +322,13 @@ def train(tickers: list[str]) -> None:
         pickle.dump({"model": model, "features": FEATURES, "horizon": HORIZON}, f)
     print(f"\nSaved model → {MODEL_PATH}")
 
+    # Invalidate cached predictions — they came from the previous model and the
+    # feature set may have changed, so serving them now would contradict the
+    # model just trained.
+    with db.get_conn() as conn:
+        n = conn.execute("DELETE FROM api_cache WHERE provider = 'ml'").rowcount
+    print(f"Cleared {n} stale cached prediction(s).")
+
 
 # --------------------------------------------------------------------------- #
 # Serving                                                                      #
@@ -352,6 +359,10 @@ def predict(ticker: str) -> dict | None:
 
     bundle = _load()
     if bundle is None:
+        return None
+    # Stale model (trained on a different feature set than the current code) —
+    # skip rather than crash the page; retrain with `python ml.py train ...`.
+    if bundle.get("features") != FEATURES:
         return None
     df = db.get_prices(ticker)
     if df is None or len(df) < 220:
