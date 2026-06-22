@@ -2343,11 +2343,11 @@ def momentum_page():
     backtest_dates_str = backtest_dates.strftime('%Y-%m-%d').tolist()
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat, mode='lines', name='12-1 Momentum Strategy (Top 5)', line=dict(color='#fbbf24', width=2)))
+    fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_strat.tolist(), mode='lines', name='12-1 Momentum Strategy (Top 5)', line=dict(color='#fbbf24', width=2)))
     if "SPY" in daily_rets.columns:
-        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_spy, mode='lines', name='SPY (S&P 500) Benchmark', line=dict(color='#64748b', width=1.5, dash='dash')))
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_spy.tolist(), mode='lines', name='SPY (S&P 500) Benchmark', line=dict(color='#64748b', width=1.5, dash='dash')))
     if "QQQ" in daily_rets.columns:
-        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_qqq, mode='lines', name='QQQ (Nasdaq 100) Benchmark', line=dict(color='#818cf8', width=1.5, dash='dash')))
+        fig.add_trace(go.Scatter(x=backtest_dates_str, y=cum_qqq.tolist(), mode='lines', name='QQQ (Nasdaq 100) Benchmark', line=dict(color='#818cf8', width=1.5, dash='dash')))
         
     fig.update_layout(
         title='Growth of $10,000 Investment',
