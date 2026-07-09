@@ -1423,10 +1423,14 @@
     const now = Date.now();
     tradeTimestamps = tradeTimestamps.filter(t => now - t < 60000);
     const tradesInWindow = tradeTimestamps.length;
-    const tps = tradesInWindow / 60;
+    // Use actual elapsed time (not always 60s) so short bursts show real velocity
+    const windowSeconds = tradeTimestamps.length > 1
+      ? Math.max(1, (now - tradeTimestamps[0]) / 1000)
+      : 60;
+    const tps = tradesInWindow / windowSeconds;
     const tpsEl = document.getElementById('trades-velocity');
     const tpsCountEl = document.getElementById('trades-count-60s');
-    if (tpsEl) tpsEl.innerText = tps.toFixed(1);
+    if (tpsEl) tpsEl.innerText = tps < 0.05 ? '<0.1' : tps.toFixed(1);
     if (tpsCountEl) tpsCountEl.innerText = tradesInWindow;
 
     // --- Trade Flow Imbalance — buy vs sell pressure ---

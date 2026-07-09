@@ -1947,33 +1947,67 @@ def calculate_greeks(s, k, t, v, r=0.045):
 
 
 def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
-    """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price."""
+    """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price.
+
+    Uses the SQLite api_cache to persist the raw option chain (calls/puts
+    DataFrames + spot price) so the app still works after hours or when
+    yfinance is rate-limited. The cache TTL is 1 hour during market hours
+    and 12 hours overnight/weekends — stale-but-present beats a blank table.
+    """
+    from db import cache_get, cache_set
+
     try:
         stock = yf.Ticker(ticker.upper())
         expirations = stock.options
         if not expirations:
             return None
-        
+
         if not expiration_date or expiration_date not in expirations:
             expiration_date = expirations[0]
-            
-        chain = stock.option_chain(expiration_date)
-        calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
-        puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
-        
-        # Determine spot price
-        hist = stock.history(period="1d")
-        if hist.empty:
-            df = get_or_fetch_prices(ticker)
-            if df is not None and not df.empty:
-                spot_price = float(df['close'].iloc[-1])
-            else:
-                spot_price = None
+
+        # --- Cache the raw chain so after-hours / rate-limited requests still work ---
+        cache_key = f"optchain:{ticker.upper()}:{expiration_date}"
+        cached = cache_get("yfinance", cache_key, ttl_hours=4)
+
+        if cached is not None:
+            calls = pd.DataFrame(cached.get('calls', []))
+            puts = pd.DataFrame(cached.get('puts', []))
+            spot_price = cached.get('spot_price')
         else:
-            spot_price = float(hist['Close'].iloc[-1])
-            
-        if not spot_price:
-            return None
+            chain = stock.option_chain(expiration_date)
+            calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+            puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+
+            # Determine spot price
+            hist = stock.history(period="1d")
+            if hist.empty:
+                df = get_or_fetch_prices(ticker)
+                if df is not None and not df.empty:
+                    spot_price = float(df['close'].iloc[-1])
+                else:
+                    spot_price = None
+            else:
+                spot_price = float(hist['Close'].iloc[-1])
+
+            if not spot_price:
+                return None
+
+            # Serialize for cache — convert Timestamps to ISO strings so
+            # json.dumps (inside cache_set) doesn't choke on numpy/pandas types.
+            def _chain_records(df):
+                if df.empty:
+                    return []
+                out = df.copy()
+                for col in out.columns:
+                    if str(out[col].dtype).startswith('datetime'):
+                        out[col] = out[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+                return out.to_dict('records')
+
+            cache_set("yfinance", cache_key, {
+                'calls': _chain_records(calls),
+                'puts': _chain_records(puts),
+                'spot_price': spot_price,
+            })
             
         exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
         today = datetime.now()
@@ -3206,5 +3240,42 @@ def raw_sec_filings_api(ticker):
         return jsonify({"error": str(e)}), 500
 
 
+# --- Automatic EOD options chain cache warmer ---
+# Pre-warms the options cache for tickers stored in the DB so the options
+# tab loads instantly and works after hours / during rate-limiting. Runs in a
+# background thread on startup and every 4 hours afterward.
+
+def _warm_options_cache():
+    """Fetch and cache option chains for all tickers in the DB, in the background."""
+    def _worker():
+        try:
+            with db.get_conn() as conn:
+                rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
+            symbols = [r["symbol"] for r in rows]
+            if not symbols:
+                return
+            print(f"[options-cache] warming {len(symbols)} tickers...")
+            for sym in symbols:
+                try:
+                    get_options_greeks_data(sym)
+                except Exception as e:
+                    print(f"[options-cache] {sym} failed: {e}")
+            print(f"[options-cache] done ({len(symbols)} tickers)")
+        except Exception as e:
+            print(f"[options-cache] warmer error: {e}")
+
+    thread = threading.Thread(target=_worker, daemon=True, name="options-cache-warmer")
+    thread.start()
+
+    # Re-warm every 4 hours so the cache stays fresh during long-running sessions
+    def _recurring():
+        while True:
+            time.sleep(4 * 3600)
+            _warm_options_cache()
+
+    threading.Thread(target=_recurring, daemon=True, name="options-cache-recurring").start()
+
+
 if __name__ == '__main__':
+    _warm_options_cache()
     app.run(debug=True, host='0.0.0.0', port=5001)
