@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,7 +13,28 @@
             fontFamily: {
               sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
               mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-            }
+            },
+            colors: {
+              zinc: {
+                50:  '#fafafa',
+                100: '#f4f4f5',
+                105: '#f0f0f1',
+                150: '#ededee',
+                200: '#e4e4e7',
+                300: '#d4d4d8',
+                350: '#c4c4c8',
+                400: '#a1a1aa',
+                500: '#71717a',
+                550: '#65656d',
+                600: '#52525b',
+                650: '#48484f',
+                700: '#3f3f46',
+                800: '#27272a',
+                850: '#1e1e21',
+                900: '#18181b',
+                950: '#09090b',
+              },
+            },
           }
         }
       }
@@ -167,8 +188,8 @@
       .dark .text-zinc-600 { color: #ffffff !important; }
     </style>
     <script>
-      // Initialize dark mode before page load to prevent flash
-      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      // Initialize dark mode before page load to prevent flash. Default to dark.
+      if (localStorage.theme === 'dark' || !('theme' in localStorage)) {
         document.documentElement.classList.add('dark')
       } else {
         document.documentElement.classList.remove('dark')
@@ -265,8 +286,8 @@
       const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
       const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
 
-      // Show the correct icon based on current theme
-      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      // Show the correct icon based on current theme. Default to dark.
+      if (localStorage.getItem('theme') === 'dark' || !('theme' in localStorage)) {
         themeToggleLightIcon.classList.remove('hidden');
       } else {
         themeToggleDarkIcon.classList.remove('hidden');
