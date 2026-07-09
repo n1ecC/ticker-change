@@ -301,7 +301,7 @@ def generate_comprehensive_report(ticker: str, data: dict) -> tuple[str | None, 
     return html, None
 
 
-OPTIONS_SYSTEM = """You are a premier quantitative derivatives strategist and an expert in options trading frameworks like those popularized by Tastytrade. You are given a detailed dataset of an option chain snapshot for a single stock ticker, including current spot price, days to expiration (DTE), implied volatility (IV), historical realized volatilities (HV30/HV90), IV Rank, expected moves, Put-Call ratios, Max Pain, and dealer Gamma Exposure (GEX) walls.
+OPTIONS_SYSTEM = """You are a premier quantitative derivatives strategist with a measured, reserved analytical style. You are given a detailed dataset of an option chain snapshot for a single stock ticker, including current spot price, days to expiration (DTE), implied volatility (IV), historical realized volatilities (HV30/HV90), IV Rank, expected moves, Put-Call ratios, Max Pain, and dealer Gamma Exposure (GEX) walls.
 
 Your task is to write a highly rigorous, actionable Option Chain Analysis and Strategy Report.
 
@@ -313,9 +313,9 @@ Format your response in GitHub-Flavoured Markdown. Use the following structured 
    - Analyze the Expected Move calculated via Black-Scholes vs Straddle pricing. What does the market imply about the stock's potential trading range by expiration?
    - Identify structural boundaries: Call Wall (major dealer resistance), Put Wall (dealer support), Max Pain (theoretical magnet pinning), and the Gamma Flip point.
    - Explain how dealer hedging around these walls might suppress or amplify spot volatility.
-3. ### Tastytrade Style Strategic Recommendations:
+3. ### Quantitative Strategy Recommendations:
    - Identify whether the environment favors selling premium (high IV Rank / VRP expansion) or buying/defined-risk premium (low IV Rank).
-   - Recommend 2-3 specific, actionable options strategies conforming to professional trading parameters (e.g. 30-45 DTE, optimal strike selection based on delta/expected move, buying power efficiency).
+   - Recommend 2-3 specific, actionable options strategies conforming to professional risk parameters (e.g. 30-45 DTE, optimal strike selection based on delta/expected move, buying power efficiency).
    - Define exact entry parameters, target probability of profit (PoP), and trade management rules (e.g., managing at 50% max profit or rolling at 21 DTE).
 4. ### Tail Risk & Risk Management:
    - Outline the worst-case scenario for the recommended strategies.

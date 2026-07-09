@@ -2941,7 +2941,7 @@ def options_greeks_api(ticker):
 
 
 def compute_options_analysis(ticker, expiration_date=None, rf_rate=0.045):
-    """Compile options statistics and Tastytrade-style metrics."""
+    """Compile options statistics and quantitative posture metrics."""
     try:
         greeks_data = get_options_greeks_data(ticker, expiration_date, rf_rate)
         if not greeks_data:
