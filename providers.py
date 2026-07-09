@@ -478,10 +478,10 @@ def sec_recent_filings(symbol: str, forms=("3", "4", "5"), limit: int = 15):
     accessions = recent.get("accessionNumber", [])
     primary = recent.get("primaryDocument", [])
 
-    wanted = set(forms)
+    wanted = set(forms) if forms is not None else None
     rows = []
     for i, form in enumerate(form_list):
-        if form not in wanted:
+        if wanted is not None and form not in wanted:
             continue
         accession = accessions[i] if i < len(accessions) else ""
         doc = primary[i] if i < len(primary) else ""

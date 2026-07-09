@@ -184,6 +184,44 @@
     {% endif %}
   </section>
 
+  <!-- Raw SEC Submissions Feed -->
+  <section class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+    <div class="flex items-baseline justify-between mb-4">
+      <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Raw SEC Submissions Feed</h2>
+      <span class="text-[10px] uppercase tracking-wider text-zinc-300 dark:text-zinc-600">SEC EDGAR</span>
+    </div>
+    
+    <div class="mb-4">
+      <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Retrieve the raw list of all recent SEC filings (10-K, 10-Q, 8-K, Form 3/4, 13F, etc.) directly from EDGAR submissions.</p>
+      <button 
+        id="fetch-raw-sec-btn"
+        onclick="fetchRawSecFilings()"
+        class="inline-flex items-center gap-2 px-4 py-2 border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-amber-500 hover:text-amber-500 dark:hover:text-amber-400 text-xs font-semibold rounded-lg transition-colors bg-zinc-50 dark:bg-zinc-800/40"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Fetch SEC Filings Feed
+      </button>
+    </div>
+
+    <!-- Container for results -->
+    <div id="raw-sec-container" class="hidden overflow-x-auto border border-zinc-150 dark:border-zinc-800 rounded-lg max-h-80 overflow-y-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-[10px] uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 sticky top-0">
+            <th class="py-2.5 px-4">Form</th>
+            <th class="py-2.5 px-4">Filing Date</th>
+            <th class="py-2.5 px-4">Document</th>
+          </tr>
+        </thead>
+        <tbody id="raw-sec-tbody" class="font-mono divide-y divide-zinc-100 dark:divide-zinc-800">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
 </div>
 
 {% else %}
@@ -210,4 +248,85 @@
   </form>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ticker = "{{ data.ticker if data else '' }}";
+
+  async function fetchRawSecFilings() {
+    if (!ticker) return;
+    const btn = document.getElementById('fetch-raw-sec-btn');
+    const container = document.getElementById('raw-sec-container');
+    const tbody = document.getElementById('raw-sec-tbody');
+    
+    btn.disabled = true;
+    btn.innerHTML = `
+      <svg class="animate-spin w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      Fetching EDGAR Feed...
+    `;
+    
+    try {
+      const res = await fetch(`/api/raw-sec-filings/${ticker}`);
+      if (!res.ok) throw new Error("Failed to retrieve SEC submissions");
+      
+      const data = await res.json();
+      tbody.innerHTML = '';
+      
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="3" class="py-8 text-center text-zinc-500 font-sans">No recent filings found for this CIK.</td>
+          </tr>
+        `;
+      } else {
+        data.forEach(f => {
+          const row = document.createElement('tr');
+          row.className = "hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors";
+          
+          let badgeColor = "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400";
+          if (f.form === "10-K" || f.form === "10-Q") {
+            badgeColor = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold";
+          } else if (f.form === "8-K") {
+            badgeColor = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+          } else if (f.form === "3" || f.form === "4" || f.form === "5") {
+            badgeColor = "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+          }
+          
+          row.innerHTML = `
+            <td class="py-2.5 px-4 font-sans">
+              <span class="inline-block px-2 py-0.5 rounded text-[10px] ${badgeColor}">${f.form}</span>
+            </td>
+            <td class="py-2.5 px-4 text-zinc-500 font-sans">${f.date || '—'}</td>
+            <td class="py-2.5 px-4 font-sans">
+              ${f.url ? `<a href="${f.url}" target="_blank" rel="noopener" class="text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:underline">view filing &rarr;</a>` : '—'}
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+      
+      container.classList.remove('hidden');
+    } catch (err) {
+      console.error(err);
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" class="py-8 text-center text-rose-500 font-sans font-semibold">Error: ${err.message}</td>
+        </tr>
+      `;
+      container.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Refresh SEC Filings Feed
+      `;
+    }
+  }
+</script>
 {% endblock %}

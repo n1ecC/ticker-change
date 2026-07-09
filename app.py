@@ -491,7 +491,13 @@ def stock_page():
     
     if ticker:
         data = get_stock_data(ticker)
-        
+
+        # get_stock_data can return {"error": ...} when yfinance is unavailable
+        # or the ticker has no cached data. Guard against KeyError on
+        # current_price so the page renders an error instead of 500ing.
+        if 'error' in data or not data.get('current_price'):
+            return render_template('stock.html', data=data, ticker=ticker.upper())
+
         # Get price ranges (all-time and 52-week) - always fetch for display
         price_ranges = get_price_ranges(ticker, current_price=data.get('current_price'))
         if price_ranges:
@@ -3188,6 +3194,16 @@ def ai_summary_page():
         report_error=report_error,
         configured=bool(providers.ai_providers()),
     )
+
+
+@app.route('/api/raw-sec-filings/<ticker>')
+def raw_sec_filings_api(ticker):
+    try:
+        filings = providers.sec_recent_filings(ticker, forms=None, limit=30)
+        return jsonify(filings or [])
+    except Exception as e:
+        print(f"Error fetching raw SEC filings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -743,14 +743,27 @@
       fetch(`/api/stock/${ticker}`)
         .then(r => r.json())
         .then(stock => {
+          if (stock.error) {
+            // API returned an error (e.g. yfinance unavailable / no cached data).
+            // Show the error in the price card instead of hanging on "Loading..."
+            const priceEl = document.getElementById('current-price-val');
+            if (priceEl) {
+              priceEl.innerText = 'N/A';
+              priceEl.className = 'text-xl font-bold tracking-tight text-rose-500 font-mono';
+              priceEl.title = stock.error;
+            }
+            const iconEl = document.getElementById('price-direction-icon');
+            if (iconEl) iconEl.innerHTML = '⚠';
+            return;
+          }
           if (stock.current_price) {
             spotPrice = stock.current_price;
             lastPrice = spotPrice;
             document.getElementById('current-price-val').innerText = `$${spotPrice.toFixed(2)}`;
-            
+
             // Build base L2 Order Book around spot price
             generateOrderBook();
-            
+
             // Launch websocket or simulator
             connectWebSocket();
 
@@ -759,6 +772,14 @@
 
             // Start periodic polling for live data
             startPolling();
+          }
+        })
+        .catch(err => {
+          console.error('Initial stock fetch failed:', err);
+          const priceEl = document.getElementById('current-price-val');
+          if (priceEl) {
+            priceEl.innerText = 'Error';
+            priceEl.className = 'text-xl font-bold tracking-tight text-rose-500 font-mono';
           }
         });
     });
