@@ -5,11 +5,26 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --workers 3 --bind 0.0.0.0:$PORT
     envVars:
+      # --- Market-positioning data providers ---
+      # Set these in the Render dashboard (sync: false = value is NOT read from
+      # this file; Render stores it securely on its side).
       - key: FINNHUB_API_KEY
-        value: REDACTED_FINNHUB_KEY
+        sync: false
       - key: FMP_API_KEY
-        value: REDACTED_FMP_KEY
+        sync: false
       - key: SEC_USER_AGENT
         value: ticker-change a.sun.079820@gmail.com
+
+      # --- AI analyst report providers (any one is enough; tried in order) ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+      # --- Runtime ---
       - key: PYTHON_VERSION
         value: 3.11.0

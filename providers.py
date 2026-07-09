@@ -33,10 +33,10 @@ _ADAPTER = HTTPAdapter(max_retries=_RETRY, pool_connections=10, pool_maxsize=10)
 _SESSION.mount("https://", _ADAPTER)
 _SESSION.mount("http://", _ADAPTER)
 
-# Built-in shared dev key — used first, so the app works out of the box. When its
-# free-tier quota is exhausted, calls automatically roll over to any user-supplied
-# keys saved on the /settings page (see _finnhub_get / _fmp_get rotation).
-_DEV_FINNHUB_KEY = "REDACTED_FINNHUB_KEY"
+# No built-in dev key — set FINNHUB_API_KEY in the environment (or via the
+# /settings page). When its free-tier quota is exhausted, calls automatically
+# roll over to any user-supplied keys saved there (see _finnhub_get / _fmp_get).
+_DEV_FINNHUB_KEY = ""
 _DEFAULT_SEC_UA = "ticker-change-dashboard contact@example.com"
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
@@ -190,7 +190,7 @@ def _finnhub_get(path: str, params: dict):
 
     Returns parsed JSON from the first key that succeeds, or None if every key is
     exhausted/failing. This is what lets a user-supplied key take over once the
-    shared dev key hits its 60 req/min cap.
+    primary key hits its 60 req/min cap.
     """
     keys = finnhub_keys()
     if not keys:
