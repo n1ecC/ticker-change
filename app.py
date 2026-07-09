@@ -986,38 +986,107 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
         return None
 
 
+def _normalize_insider_df(raw):
+    """Clean yfinance insider_transactions into a signed DataFrame.
+
+    Returns (idf, None) on success or (None, reason) if data is unusable.
+    Signs shares: Purchase → positive, Sale → negative, Gift/other → 0 (excluded
+    from net activity but kept for the raw table).
+    """
+    if raw is None or (hasattr(raw, 'empty') and raw.empty):
+        return None, 'no data'
+
+    idf = raw.copy()
+    if hasattr(idf.index, 'tz') and idf.index.tz is not None:
+        idf.index = pd.to_datetime(idf.index).tz_localize(None)
+    else:
+        idf.index = pd.to_datetime(idf.index, errors='coerce')
+
+    shares_col = next((c for c in idf.columns if c.lower() == 'shares'), None)
+    text_col   = next((c for c in idf.columns if c.lower() == 'text'), None)
+    name_col   = next((c for c in idf.columns if c.lower() == 'insider'), None)
+    pos_col    = next((c for c in idf.columns if c.lower() == 'position'), None)
+    val_col    = next((c for c in idf.columns if c.lower() == 'value'), None)
+    if shares_col is None:
+        return None, 'no shares column'
+
+    idf['_shares'] = pd.Series(pd.to_numeric(idf[shares_col], errors='coerce')).fillna(0)
+
+    def _sign(text):
+        t = str(text).lower()
+        if 'purchase' in t or 'buy' in t or 'acquire' in t:
+            return 1
+        if 'sale' in t or 'sell' in t:
+            return -1
+        if 'gift' in t or 'grant' in t:
+            return 0
+        return -1  # blank/unknown — treat as disposition
+
+    if text_col:
+        idf['_signed'] = idf.apply(lambda r: r['_shares'] * _sign(r[text_col]), axis=1)
+    else:
+        idf['_signed'] = -idf['_shares']  # yfinance defaults to sales
+
+    # Keep metadata for the transactions table
+    idf['_name'] = idf[name_col].astype(str) if name_col else ''
+    idf['_position'] = idf[pos_col].astype(str) if pos_col else ''
+    idf['_value'] = pd.Series(pd.to_numeric(idf[val_col], errors='coerce')).fillna(0) if val_col else 0
+    idf['_text'] = idf[text_col].astype(str) if text_col else ''
+    return idf, None
+
+
+def get_insider_summary(ticker: str) -> dict | None:
+    """Recent insider transactions + aggregate stats for the analytics card."""
+    try:
+        raw = yf.Ticker(ticker.upper()).insider_transactions
+        idf, err = _normalize_insider_df(raw)
+        if idf is None:
+            return None
+
+        buys   = idf[idf['_signed'] > 0]
+        sells  = idf[idf['_signed'] < 0]
+        total_buy  = int(buys['_signed'].sum())
+        total_sell = int(sells['_signed'].sum())
+        net        = total_buy + total_sell  # sells are already negative
+
+        txns = []
+        for _, r in idf.head(12).iterrows():
+            signed = int(r['_signed'])
+            txns.append({
+                'name':      r['_name'],
+                'position':  r['_position'],
+                'shares':    signed,
+                'is_buy':    signed > 0,
+                'value':     float(r['_value']),
+                'text':      r['_text'],
+                'date':      r.name.strftime('%Y-%m-%d') if r.name is not pd.NaT else '',
+            })
+
+        return {
+            'n_buys':    len(buys),
+            'n_sells':   len(sells),
+            'total_buy': total_buy,
+            'total_sell': abs(total_sell),
+            'net':       net,
+            'n_insiders': idf['_name'].nunique(),
+            'transactions': txns,
+        }
+    except Exception as e:
+        print(f"Insider summary failed for {ticker}: {e}")
+        return None
+
+
 def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
     """Dual-axis chart: net monthly insider share activity vs. stock price."""
     try:
         raw = yf.Ticker(ticker.upper()).insider_transactions
-        if raw is None or (hasattr(raw, 'empty') and raw.empty):
+        idf, err = _normalize_insider_df(raw)
+        if idf is None:
             return None
 
-        idf = raw.copy()
-        # Normalise date index
-        if hasattr(idf.index, 'tz'):
-            idf.index = pd.to_datetime(idf.index).tz_localize(None)
-        else:
-            idf.index = pd.to_datetime(idf.index)
-
-        # Determine net signed shares
-        shares_col = next((c for c in idf.columns if 'share' in c.lower()), None)
-        txn_col    = next((c for c in idf.columns
-                           if c.lower() in ('transaction', 'text', 'type')), None)
-        if shares_col is None:
-            return None
-
-        idf['_shares'] = pd.to_numeric(idf[shares_col], errors='coerce').fillna(0)
-        if txn_col:
-            idf['_signed'] = idf.apply(
-                lambda r: r['_shares'] if 'purchase' in str(r[txn_col]).lower()
-                          else -r['_shares'],
-                axis=1
-            )
-        else:
-            idf['_signed'] = idf['_shares']
-
-        monthly = idf['_signed'].resample('ME').sum()
+        # Exclude gifts/grants (sign 0) from the net monthly bar
+        signed = idf[idf['_signed'] != 0]
+        monthly = signed['_signed'].resample('ME').sum()
         monthly = monthly[monthly != 0]
         if monthly.empty:
             return None
@@ -1031,12 +1100,14 @@ def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
             marker_color=bar_colors,
             marker_line_width=0,
             yaxis='y',
+            hovertemplate='%{x|%b %Y}<br>%{y:+,.0f} shares<extra></extra>',
         ))
         fig.add_trace(go.Scatter(
             x=price_df.index, y=price_df['close'],
             mode='lines', name='Price',
             line=dict(color='#f59e0b', width=1.5),
             yaxis='y2',
+            hovertemplate='%{x|%b %d}<br>$%{y:.2f}<extra></extra>',
         ))
         fig.update_layout(
             yaxis =dict(title='Net Shares (Insider)', side='left'),
@@ -1048,6 +1119,7 @@ def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             legend=dict(orientation='h', yanchor='bottom', y=1.02),
+            hovermode='x unified',
         )
         return fig.to_html(full_html=False, include_plotlyjs=False)
     except Exception as e:
@@ -1659,6 +1731,7 @@ def analytics_page():
     price_df = get_or_fetch_prices(ticker)
     if price_df is not None:
         data['charts']['insider'] = get_insider_chart(ticker, price_df)
+        data['insider_summary'] = get_insider_summary(ticker)
         data['charts']['cumulative_return'] = get_cumulative_return_chart(ticker, price_df)
 
     # Attach analyst price target

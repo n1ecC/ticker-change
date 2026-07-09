@@ -354,10 +354,8 @@
 
   <!-- Tab 2: Option Greeks -->
   <div id="tab-content-greeks" class="hidden space-y-6">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      
-      <!-- Option Chain (Left 7 columns) -->
-      <div class="lg:col-span-7 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[700px] overflow-hidden">
+    <!-- Option Chain (full width) -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[700px] overflow-hidden">
         
         <!-- Controls Header -->
         <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap gap-4 items-center justify-between bg-zinc-50 dark:bg-zinc-900/50">
@@ -422,10 +420,11 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- Greeks Visualizer & Payoff Simulator (side by side) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       
-      <!-- Charts & Payoff Simulator (Right 5 columns) -->
-      <div class="lg:col-span-5 flex flex-col gap-6">
-        
         <!-- Greeks Charts Viewer -->
         <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
           <div class="flex items-center justify-between mb-2">
@@ -436,6 +435,7 @@
               <button onclick="switchGreeksChart('iv')" id="chart-tab-iv" title="{{ GLOSSARY.iv_smile.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Smile</button>
               <button onclick="switchGreeksChart('gex')" id="chart-tab-gex" title="{{ GLOSSARY.gex.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">GEX</button>
               <button onclick="switchGreeksChart('voloi')" id="chart-tab-voloi" title="Open Interest & Volume by strike" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Vol/OI</button>
+              <button onclick="switchGreeksChart('pctchg')" id="chart-tab-pctchg" title="Daily P/L % by strike" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">P/L %</button>
             </div>
           </div>
           
@@ -1063,6 +1063,11 @@
       trades.pop();
     }
     
+    // Track trade flow metrics
+    const now = Date.now();
+    tradeTimestamps.push(now);
+    if (direction === 'buy') buyCount++; else sellCount++;
+    
     totalVolume += size;
     totalVal += price * size;
     vwap = totalVal / totalVolume;
@@ -1395,6 +1400,57 @@
       vwapEl.innerText = `$${vwap.toFixed(2)}`;
     }
     
+    // --- Trade Velocity (TPS) — trades in the last 60 seconds ---
+    const now = Date.now();
+    tradeTimestamps = tradeTimestamps.filter(t => now - t < 60000);
+    const tradesInWindow = tradeTimestamps.length;
+    const tps = tradesInWindow / 60;
+    const tpsEl = document.getElementById('trades-velocity');
+    const tpsCountEl = document.getElementById('trades-count-60s');
+    if (tpsEl) tpsEl.innerText = tps.toFixed(1);
+    if (tpsCountEl) tpsCountEl.innerText = tradesInWindow;
+
+    // --- Trade Flow Imbalance — buy vs sell pressure ---
+    const totalTrades = buyCount + sellCount;
+    const buyPct = totalTrades > 0 ? (buyCount / totalTrades) * 100 : 50;
+    const sellPct = 100 - buyPct;
+    const imbalance = totalTrades > 0 ? Math.round(buyPct - sellPct) : 0;
+
+    const flowValEl = document.getElementById('flow-imbalance-val');
+    if (flowValEl) {
+      const sign = imbalance > 0 ? '+' : '';
+      flowValEl.innerText = `${sign}${imbalance}%`;
+      flowValEl.className = `text-3xl font-bold tracking-tight font-mono ${
+        imbalance > 5 ? 'text-emerald-500' : imbalance < -5 ? 'text-rose-500' : 'text-zinc-900 dark:text-zinc-50'
+      }`;
+    }
+    const flowBuyBar = document.getElementById('flow-buy-bar');
+    const flowSellBar = document.getElementById('flow-sell-bar');
+    const flowBuyPct = document.getElementById('flow-buy-pct');
+    const flowSellPct = document.getElementById('flow-sell-pct');
+    if (flowBuyBar) flowBuyBar.style.width = `${buyPct}%`;
+    if (flowSellBar) flowSellBar.style.width = `${sellPct}%`;
+    if (flowBuyPct) flowBuyPct.innerText = `${buyPct.toFixed(0)}%`;
+    if (flowSellPct) flowSellPct.innerText = `${sellPct.toFixed(0)}%`;
+
+    // --- VWAP Distance — how far is current price from VWAP ---
+    const vwapDistEl = document.getElementById('vwap-distance-val');
+    if (vwapDistEl && vwap > 0 && lastPrice > 0) {
+      const dist = lastPrice - vwap;
+      const distPct = (dist / vwap) * 100;
+      const sign = dist >= 0 ? '+' : '';
+      vwapDistEl.innerText = `${sign}${distPct.toFixed(2)}%`;
+      vwapDistEl.className = `text-3xl font-bold tracking-tight font-mono ${
+        dist >= 0 ? 'text-emerald-500' : 'text-rose-500'
+      }`;
+    }
+
+    // --- Cumulative Volume ---
+    const cumVolEl = document.getElementById('cum-volume-val');
+    if (cumVolEl) {
+      cumVolEl.innerText = totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume;
+    }
+    
     const bidPrice = orderBook.bids[0].price;
     const askPrice = orderBook.asks[0].price;
     const spread = askPrice - bidPrice;
@@ -1668,7 +1724,7 @@
   function switchGreeksChart(type) {
     currentGreeksChart = type;
     
-    const tabs = ['delta', 'gamma', 'iv', 'gex', 'voloi'];
+    const tabs = ['delta', 'gamma', 'iv', 'gex', 'voloi', 'pctchg'];
     tabs.forEach(t => {
       const btn = document.getElementById(`chart-tab-${t}`);
       if (t === type) {
@@ -1842,6 +1898,20 @@
         extraAnnotations.push({ x, y: 0.92, yref: 'paper', text: `${label} $${x.toFixed(0)}`,
           showarrow: false, font: { size: 8, color } });
       });
+    } else if (currentGreeksChart === 'pctchg') {
+      // Daily P/L % by strike — green for positive change, red for negative.
+      // Uses yfinance percentChange (today's option price vs prior close).
+      const callPct = optionsData.options.map(o => o.call_pct_change || 0);
+      const putPct = optionsData.options.map(o => o.put_pct_change || 0);
+      // Color each bar individually: green for positive, red for negative
+      const callColors = callPct.map(v => v > 0.1 ? '#10b981' : v < -0.1 ? '#f43f5e' : '#a1a1aa');
+      const putColors = putPct.map(v => v > 0.1 ? '#10b981' : v < -0.1 ? '#f43f5e' : '#a1a1aa');
+      traces = [
+        { x: strikes, y: callPct, name: 'Call Chg%', type: 'bar',
+          marker: { color: callColors }, xaxis: 'x', yaxis: 'y' },
+        { x: strikes, y: putPct, name: 'Put Chg%', type: 'bar',
+          marker: { color: putColors }, xaxis: 'x2', yaxis: 'y2' },
+      ];
     }
 
     const layout = {
@@ -1854,7 +1924,8 @@
       yaxis: {
         tickfont: { size: 9, color: isDark ? '#ffffff' : '#71717a' },
         gridcolor: isDark ? '#27272a' : '#f4f4f5',
-        zeroline: false
+        zeroline: false,
+        title: currentGreeksChart === 'pctchg' ? 'Call Chg %' : ''
       },
       yaxis2: {
         overlaying: 'y',
@@ -1862,7 +1933,7 @@
         showgrid: false,
         zeroline: false,
         tickfont: { size: 8, color: isDark ? '#a1a1aa' : '#a1a1aa' },
-        title: currentGreeksChart === 'voloi' ? 'Volume' : ''
+        title: currentGreeksChart === 'voloi' ? 'Volume' : currentGreeksChart === 'pctchg' ? 'Put Chg %' : ''
       },
       shapes: [{
         type: 'line',
