@@ -157,6 +157,9 @@
     <button id="tab-btn-greeks" onclick="switchTab('greeks')" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all">
       Option Greeks & Payoff Simulator
     </button>
+    <button id="tab-btn-options-ai" onclick="switchTab('options-ai')" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all">
+      Options AI Analyst
+    </button>
   </div>
 
   <!-- Simulation Notification Banner -->
@@ -333,9 +336,9 @@
           <table class="w-full text-left whitespace-nowrap table-auto border-collapse">
             <thead>
               <tr class="text-[9px] text-zinc-400 bg-zinc-100 dark:bg-zinc-850 border-b border-zinc-200 dark:border-zinc-800 uppercase">
-                <th colspan="7" class="py-2 px-3 text-center border-r border-zinc-200 dark:border-zinc-800 text-emerald-500">Call Options</th>
+                <th colspan="8" class="py-2 px-3 text-center border-r border-zinc-200 dark:border-zinc-800 text-emerald-500">Call Options</th>
                 <th class="py-2 px-3 text-center">Center</th>
-                <th colspan="7" class="py-2 px-3 text-center border-l border-zinc-200 dark:border-zinc-800 text-rose-500">Put Options</th>
+                <th colspan="8" class="py-2 px-3 text-center border-l border-zinc-200 dark:border-zinc-800 text-rose-500">Put Options</th>
               </tr>
               <tr class="text-[9px] text-zinc-400 bg-zinc-50 dark:bg-zinc-900/40 border-b border-zinc-200 dark:border-zinc-800 uppercase">
                 <!-- Calls -->
@@ -346,10 +349,12 @@
                 <th class="py-1.5 px-2 text-right">Vol</th>
                 <th class="py-1.5 px-2 text-right">OI</th>
                 <th class="py-1.5 px-2 text-right border-r border-zinc-200 dark:border-zinc-800">Bid/Ask</th>
+                <th class="py-1.5 px-2 text-right border-r border-zinc-200 dark:border-zinc-800">Chg%</th>
                 <!-- Strike -->
                 <th class="py-1.5 px-3 text-center font-bold bg-zinc-100/50 dark:bg-zinc-800/20 text-zinc-700 dark:text-zinc-300">Strike</th>
                 <!-- Puts -->
                 <th class="py-1.5 px-2 border-l border-zinc-200 dark:border-zinc-800">Bid/Ask</th>
+                <th class="py-1.5 px-2 text-right border-l border-zinc-200 dark:border-zinc-800">Chg%</th>
                 <th class="py-1.5 px-2 text-right">OI</th>
                 <th class="py-1.5 px-2 text-right">Vol</th>
                 <th class="py-1.5 px-2 text-right">IV</th>
@@ -359,7 +364,7 @@
               </tr>
             </thead>
             <tbody id="option-chain-body">
-              <tr class="text-center text-zinc-400"><td colspan="15" class="py-40">Select expiration to populate options data...</td></tr>
+              <tr class="text-center text-zinc-400"><td colspan="17" class="py-40">Select expiration to populate options data...</td></tr>
             </tbody>
           </table>
         </div>
@@ -442,6 +447,185 @@
           <div id="payoff-chart" class="w-full h-[220px]"></div>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 3: Options AI Analyst -->
+  <div id="tab-content-options-ai" class="hidden space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Volatility & Skew Profile -->
+      <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+          <h3 class="text-sm font-bold">Volatility & Skew Profile</h3>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">ATM Implied Vol (IV)</span>
+            <span id="opt-ai-atm-iv" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">--%</span>
+          </div>
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">30d Realized Vol (HV30)</span>
+            <span id="opt-ai-hv30" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">--%</span>
+          </div>
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">IV Rank (1y HV)</span>
+            <span id="opt-ai-iv-rank" class="font-mono text-xl font-bold text-amber-500">--%</span>
+          </div>
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">IV Percentile</span>
+            <span id="opt-ai-iv-pct" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">--%</span>
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">90d Realized Vol (HV90)</span>
+            <span id="opt-ai-hv90" class="font-mono font-semibold">--%</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-2">
+            <span class="text-zinc-400">Volatility Risk Premium (VRP)</span>
+            <span id="opt-ai-vrp" class="font-mono font-semibold">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expected Range & Key Levels -->
+      <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <h3 class="text-sm font-bold">Expected Move & Key Levels</h3>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Expected Move (BS)</span>
+            <span id="opt-ai-em-bs" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">$--</span>
+          </div>
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Expected Move (Straddle)</span>
+            <span id="opt-ai-em-straddle" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">$--</span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 pt-1">
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Call Wall (Resistance)</span>
+            <span id="opt-ai-call-wall" class="font-mono font-bold text-emerald-500">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Put Wall (Support)</span>
+            <span id="opt-ai-put-wall" class="font-mono font-bold text-rose-500">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Gamma Flip Point</span>
+            <span id="opt-ai-gamma-flip" class="font-mono font-semibold">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1">
+            <span class="text-zinc-400">Max Pain Strike</span>
+            <span id="opt-ai-max-pain" class="font-mono font-semibold">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Volume & Open Interest Sentiment -->
+      <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <h3 class="text-sm font-bold">Open Interest & Flow Sentiment</h3>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Volume Put/Call Ratio</span>
+            <span id="opt-ai-vol-pcr" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">--</span>
+          </div>
+          <div class="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg">
+            <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-1">OI Put/Call Ratio</span>
+            <span id="opt-ai-oi-pcr" class="font-mono text-xl font-bold text-zinc-800 dark:text-zinc-200">--</span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 pt-1">
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Total Call Volume</span>
+            <span id="opt-ai-call-vol" class="font-mono font-semibold">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Total Put Volume</span>
+            <span id="opt-ai-put-vol" class="font-mono font-semibold">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1 border-b border-zinc-150 dark:border-zinc-850">
+            <span class="text-zinc-400">Total Call Open Interest</span>
+            <span id="opt-ai-call-oi" class="font-mono font-semibold">--</span>
+          </div>
+          <div class="flex justify-between items-center text-xs py-1">
+            <span class="text-zinc-400">Total Put Open Interest</span>
+            <span id="opt-ai-put-oi" class="font-mono font-semibold">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tastytrade Strategy Recommendation Card -->
+    <div class="bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 rounded-xl p-5 shadow-sm">
+      <div class="flex items-start gap-4">
+        <div class="p-3 bg-amber-500/10 rounded-lg text-amber-500 mt-0.5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">Tastytrade Style Strategic Direction</span>
+          <h4 id="opt-ai-strategy-rec" class="text-sm font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">Calculating...</h4>
+          <p id="opt-ai-strategy-rationale" class="text-xs text-zinc-550 dark:text-zinc-400 mt-1.5 leading-relaxed">Gathering option chain dynamics to formulate optimal trade structures...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Option Chain Report Section -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm space-y-6">
+      <div class="flex items-center justify-between border-b border-zinc-150 dark:border-zinc-850 pb-4">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-50">AI Generated Option Chain Report</h3>
+            <p class="text-[11px] text-zinc-400">Daily structural scan, volume concentrations, dealer positioning & trade recommendations</p>
+          </div>
+        </div>
+
+        <button id="generate-opt-ai-btn" onclick="generateOptionsAiReport()" class="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.235" />
+          </svg>
+          Generate Report
+        </button>
+      </div>
+
+      <!-- Loading / Placeholder / Report Display -->
+      <div id="opt-ai-report-display" class="min-h-[200px] flex items-center justify-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl p-8 text-center">
+        <div class="max-w-md space-y-3">
+          <div class="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-full inline-block">
+            <svg class="w-8 h-8 text-zinc-300 dark:text-zinc-650" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h4 class="text-sm font-bold text-zinc-700 dark:text-zinc-350">Ready to Analyze Option Chain</h4>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">Click the 'Generate Report' button above to request an AI synthesis of the volatility surface, delta boundaries, dealer exposures, and strategic setups.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -531,19 +715,22 @@
     // Toggle contents
     document.getElementById('tab-content-microstructure').classList.toggle('hidden', tab !== 'microstructure');
     document.getElementById('tab-content-greeks').classList.toggle('hidden', tab !== 'greeks');
+    document.getElementById('tab-content-options-ai').classList.toggle('hidden', tab !== 'options-ai');
     
     // Update button states
     const btnMicro = document.getElementById('tab-btn-microstructure');
     const btnGreeks = document.getElementById('tab-btn-greeks');
+    const btnOptionsAi = document.getElementById('tab-btn-options-ai');
+    
+    btnMicro.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
+    btnGreeks.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
+    btnOptionsAi.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
     
     if (tab === 'microstructure') {
       btnMicro.className = "pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all";
-      btnGreeks.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
-      // Reflow plotly charts in case dimensions were off
       Plotly.Plots.resize('depth-chart');
-    } else {
+    } else if (tab === 'greeks') {
       btnGreeks.className = "pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all";
-      btnMicro.className = "pb-3 text-sm font-semibold border-b-2 border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-all";
       
       // Load Option Greeks if not already loaded
       if (!optionsData) {
@@ -554,6 +741,154 @@
         Plotly.Plots.resize('greeks-chart');
         Plotly.Plots.resize('payoff-chart');
       }
+    } else if (tab === 'options-ai') {
+      btnOptionsAi.className = "pb-3 text-sm font-semibold border-b-2 border-amber-500 text-amber-500 transition-all";
+      loadOptionsAnalysis();
+    }
+  }
+
+  let optionsAnalysisData = null;
+
+  async function loadOptionsAnalysis() {
+    const select = document.getElementById('expiration-select');
+    let date = select ? select.value : '';
+    const rfRate = document.getElementById('rf-rate-input') ? document.getElementById('rf-rate-input').value : '0.045';
+    
+    if (!select || !select.value) {
+      await loadExpirationDates();
+      date = document.getElementById('expiration-select').value;
+    }
+    
+    if (!date) return;
+    
+    document.getElementById('opt-ai-strategy-rec').innerText = 'Loading analysis...';
+    document.getElementById('opt-ai-strategy-rationale').innerText = 'Gathering option chain metrics from live providers...';
+
+    try {
+      const res = await fetch(`/api/options-analysis/${ticker}?expiration=${date}&rf_rate=${rfRate}`);
+      if (!res.ok) throw new Error("Failed to load options analysis");
+      
+      optionsAnalysisData = await res.json();
+      
+      // Populate volatility stats
+      document.getElementById('opt-ai-atm-iv').innerText = `${optionsAnalysisData.atm_iv.toFixed(1)}%`;
+      document.getElementById('opt-ai-hv30').innerText = `${optionsAnalysisData.hv30.toFixed(1)}%`;
+      document.getElementById('opt-ai-hv90').innerText = `${optionsAnalysisData.hv90.toFixed(1)}%`;
+      document.getElementById('opt-ai-iv-rank').innerText = `${optionsAnalysisData.iv_rank.toFixed(1)}%`;
+      document.getElementById('opt-ai-iv-pct').innerText = `${optionsAnalysisData.iv_percentile.toFixed(1)}%`;
+      
+      const vrp = optionsAnalysisData.atm_iv - optionsAnalysisData.hv30;
+      document.getElementById('opt-ai-vrp').innerText = `${vrp >= 0 ? '+' : ''}${vrp.toFixed(1)}% (${vrp >= 0 ? 'Rich Premium' : 'Discounted'})`;
+      document.getElementById('opt-ai-vrp').className = `font-mono font-semibold ${vrp >= 0 ? 'text-emerald-500' : 'text-rose-500'}`;
+      
+      // Expected range
+      document.getElementById('opt-ai-em-bs').innerText = `±$${optionsAnalysisData.expected_move_bs.toFixed(2)}`;
+      document.getElementById('opt-ai-em-straddle').innerText = `±$${optionsAnalysisData.expected_move_straddle.toFixed(2)}`;
+      
+      const gex = optionsAnalysisData.gex_stats;
+      if (gex) {
+        document.getElementById('opt-ai-call-wall').innerText = `$${gex.call_wall} (${gex.call_wall_val >= 0 ? '+' : ''}${gex.call_wall_val.toFixed(1)}M)`;
+        document.getElementById('opt-ai-put-wall').innerText = `$${gex.put_wall} (${gex.put_wall_val.toFixed(1)}M)`;
+        document.getElementById('opt-ai-gamma-flip').innerText = `$${gex.gamma_flip}`;
+      } else {
+        document.getElementById('opt-ai-call-wall').innerText = 'N/A';
+        document.getElementById('opt-ai-put-wall').innerText = 'N/A';
+        document.getElementById('opt-ai-gamma-flip').innerText = 'N/A';
+      }
+      
+      document.getElementById('opt-ai-max-pain').innerText = `$${optionsAnalysisData.max_pain.toFixed(2)}`;
+      
+      // Volume & Sentiment
+      document.getElementById('opt-ai-vol-pcr').innerText = optionsAnalysisData.vol_pcr.toFixed(2);
+      document.getElementById('opt-ai-oi-pcr').innerText = optionsAnalysisData.oi_pcr.toFixed(2);
+      
+      const fmtBig = v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v;
+      document.getElementById('opt-ai-call-vol').innerText = fmtBig(optionsAnalysisData.total_call_vol);
+      document.getElementById('opt-ai-put-vol').innerText = fmtBig(optionsAnalysisData.total_put_vol);
+      document.getElementById('opt-ai-call-oi').innerText = fmtBig(optionsAnalysisData.total_call_oi);
+      document.getElementById('opt-ai-put-oi').innerText = fmtBig(optionsAnalysisData.total_put_oi);
+      
+      // Strategy Recommendation
+      document.getElementById('opt-ai-strategy-rec').innerText = optionsAnalysisData.strategy_recommendation;
+      document.getElementById('opt-ai-strategy-rationale').innerText = optionsAnalysisData.strategy_rationale;
+      
+    } catch (err) {
+      console.error(err);
+      document.getElementById('opt-ai-strategy-rec').innerText = 'Analysis Failed';
+      document.getElementById('opt-ai-strategy-rationale').innerText = 'An error occurred while compiling option chain analytics. Make sure the ticker is valid and has active option listings.';
+    }
+  }
+
+  async function generateOptionsAiReport() {
+    const select = document.getElementById('expiration-select');
+    const date = select ? select.value : '';
+    const rfRate = document.getElementById('rf-rate-input') ? document.getElementById('rf-rate-input').value : '0.045';
+    
+    if (!date) {
+      alert("Please select a valid expiration date.");
+      return;
+    }
+    
+    const btn = document.getElementById('generate-opt-ai-btn');
+    const display = document.getElementById('opt-ai-report-display');
+    
+    btn.disabled = true;
+    btn.innerHTML = `
+      <svg class="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      Analyzing chain...
+    `;
+    
+    display.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex justify-center">
+          <div class="relative w-12 h-12">
+            <div class="absolute inset-0 rounded-full border-4 border-amber-500/10"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-amber-500 border-t-transparent animate-spin"></div>
+          </div>
+        </div>
+        <div class="max-w-xs mx-auto">
+          <h4 class="text-sm font-bold text-zinc-800 dark:text-zinc-200">Consulting AI Options Desk...</h4>
+          <p class="text-xs text-zinc-500 mt-1">Synthesizing Greeks, GEX profile, VRP conditions and generating actionable setups. This may take 10-15 seconds.</p>
+        </div>
+      </div>
+    `;
+    
+    try {
+      const res = await fetch(`/api/options-ai-report/${ticker}?expiration=${date}&rf_rate=${rfRate}`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate report");
+      }
+      
+      display.className = "prose prose-sm dark:prose-invert max-w-none text-left p-2";
+      display.innerHTML = data.html;
+      
+    } catch (err) {
+      console.error(err);
+      display.className = "min-h-[200px] flex items-center justify-center border border-dashed border-rose-200 dark:border-rose-800/40 rounded-xl p-8 text-center bg-rose-500/[0.02]";
+      display.innerHTML = `
+        <div class="max-w-md space-y-3">
+          <div class="p-3 bg-rose-500/10 rounded-full inline-block text-rose-500">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h4 class="text-sm font-bold text-rose-500">Failed to Generate Report</h4>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">${err.message || 'The AI service is currently busy or returned an empty response. Verify your API keys in settings and try again.'}</p>
+        </div>
+      `;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.235" />
+        </svg>
+        Generate Report
+      `;
     }
   }
 
@@ -1119,6 +1454,10 @@
   }
 
   async function loadOptionsGreeks() {
+    if (activeTab === 'options-ai') {
+      loadOptionsAnalysis();
+      return;
+    }
     const select = document.getElementById('expiration-select');
     if (!select || !select.value) return;
     
@@ -1127,7 +1466,7 @@
     
     document.getElementById('option-chain-body').innerHTML = `
       <tr class="text-center text-zinc-400">
-        <td colspan="15" class="py-40">
+        <td colspan="17" class="py-40">
           <div class="inline-flex gap-2 items-center text-zinc-500">
             <svg class="animate-spin w-4.5 h-4.5 text-amber-500" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -1143,7 +1482,7 @@
     if (!res.ok) {
       document.getElementById('option-chain-body').innerHTML = `
         <tr class="text-center text-zinc-400">
-          <td colspan="15" class="py-40 text-rose-500 font-semibold">Failed to fetch options chain.</td>
+          <td colspan="17" class="py-40 text-rose-500 font-semibold">Failed to fetch options chain.</td>
         </tr>
       `;
       return;
@@ -1172,6 +1511,14 @@
       const fmtVol = v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v;
       const fmtOI = v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v;
 
+      // Daily P/L change: green for positive, red for negative, muted if zero
+      const fmtChgPct = (pct) => {
+        if (pct === 0 || pct === undefined || pct === null) return `<span class="text-zinc-400">—</span>`;
+        const cls = pct > 0 ? 'text-emerald-500' : 'text-rose-500';
+        const sign = pct > 0 ? '+' : '';
+        return `<span class="${cls} font-semibold">${sign}${pct.toFixed(1)}%</span>`;
+      };
+
       html += `
         <tr class="border-b border-zinc-150 dark:border-zinc-850 hover:bg-zinc-50 dark:hover:bg-zinc-800/10">
           <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} font-semibold cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${opt.call_delta === 'N/A' ? 'N/A' : opt.call_delta.toFixed(3)}</td>
@@ -1181,10 +1528,12 @@
           <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} text-zinc-500 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5" title="${opt.call_volume}">${fmtVol(opt.call_volume)}</td>
           <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} text-zinc-500 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5" title="${opt.call_oi}">${fmtOI(opt.call_oi)}</td>
           <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} border-r border-zinc-200 dark:border-zinc-800 font-bold cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5">${cBidAsk}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'call')" class="py-1.5 px-2 text-right ${callItmClass} border-r border-zinc-200 dark:border-zinc-800 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/5" title="$${opt.call_change >= 0 ? '+' : ''}${opt.call_change.toFixed(2)}">${fmtChgPct(opt.call_pct_change)}</td>
           
           <td class="py-1.5 px-3 text-center font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 relative">${opt.strike.toFixed(2)}</td>
           
           <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 border-l border-zinc-200 dark:border-zinc-800 ${putItmClass} font-bold cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${pBidAsk}</td>
+          <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right border-l border-zinc-200 dark:border-zinc-800 ${putItmClass} cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5" title="$${opt.put_change >= 0 ? '+' : ''}${opt.put_change.toFixed(2)}">${fmtChgPct(opt.put_pct_change)}</td>
           <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} text-zinc-500 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5" title="${opt.put_oi}">${fmtOI(opt.put_oi)}</td>
           <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} text-zinc-500 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5" title="${opt.put_volume}">${fmtVol(opt.put_volume)}</td>
           <td onclick="selectOptionForSimulator(${opt.strike}, 'put')" class="py-1.5 px-2 text-right ${putItmClass} font-semibold text-amber-500 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/5">${opt.put_iv.toFixed(1)}%</td>

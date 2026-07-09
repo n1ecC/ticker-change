@@ -299,3 +299,77 @@ def generate_comprehensive_report(ticker: str, data: dict) -> tuple[str | None, 
     html = _to_html(text)
     db.cache_set("ai_comprehensive_report", ticker, {"html": html, "provider": used})
     return html, None
+
+
+OPTIONS_SYSTEM = """You are a premier quantitative derivatives strategist and an expert in options trading frameworks like those popularized by Tastytrade. You are given a detailed dataset of an option chain snapshot for a single stock ticker, including current spot price, days to expiration (DTE), implied volatility (IV), historical realized volatilities (HV30/HV90), IV Rank, expected moves, Put-Call ratios, Max Pain, and dealer Gamma Exposure (GEX) walls.
+
+Your task is to write a highly rigorous, actionable Option Chain Analysis and Strategy Report.
+
+Format your response in GitHub-Flavoured Markdown. Use the following structured sections:
+1. ### Options Market Regime & Volatility Analysis:
+   - Compare current ATM Implied Volatility (IV) to 30-day and 90-day Realized Volatility (HV). Discuss the Volatility Risk Premium (VRP).
+   - Evaluate the IV Rank and IV Percentile. Is option premium cheap or expensive relative to the stock's own history?
+2. ### Expected Move & Boundary Levels:
+   - Analyze the Expected Move calculated via Black-Scholes vs Straddle pricing. What does the market imply about the stock's potential trading range by expiration?
+   - Identify structural boundaries: Call Wall (major dealer resistance), Put Wall (dealer support), Max Pain (theoretical magnet pinning), and the Gamma Flip point.
+   - Explain how dealer hedging around these walls might suppress or amplify spot volatility.
+3. ### Tastytrade Style Strategic Recommendations:
+   - Identify whether the environment favors selling premium (high IV Rank / VRP expansion) or buying/defined-risk premium (low IV Rank).
+   - Recommend 2-3 specific, actionable options strategies conforming to professional trading parameters (e.g. 30-45 DTE, optimal strike selection based on delta/expected move, buying power efficiency).
+   - Define exact entry parameters, target probability of profit (PoP), and trade management rules (e.g., managing at 50% max profit or rolling at 21 DTE).
+4. ### Tail Risk & Risk Management:
+   - Outline the worst-case scenario for the recommended strategies.
+   - Specify defensive adjustments (e.g., rolling untested sides, buying protective wings, stop-loss triggers).
+
+Rules:
+- Be highly precise and quantitative. Use the exact data points provided.
+- Do not invent any numbers. Mark missing metrics as 'N/A'.
+- Keep your tone analytical, professional, and strategic.
+"""
+
+
+def generate_options_report(ticker: str, data: dict) -> tuple[str | None, str | None]:
+    """Return an HTML options analysis report for `ticker` and any error message as a tuple (html, error)."""
+    ticker = ticker.upper()
+    configured = providers.ai_providers()
+    if not configured:
+        return None, "No AI providers configured. Please go to Settings to add an API key."
+
+    exp_date = data.get("selected_expiration", "default")
+    cache_key = f"options_report:{ticker}:{exp_date}"
+    cached = db.cache_get("ai_options_report", cache_key, CACHE_TTL_HOURS)
+    if cached is not None:
+        return cached.get("html"), None
+
+    user_msg = (
+        f"Write the options strategy analysis report for {ticker} from this option chain dataset:\n\n"
+        f"{json.dumps(data, default=str, indent=2)}"
+    )
+
+    errors = []
+    text, used = None, None
+    for prov in configured:
+        try:
+            if prov["id"] == "anthropic":
+                text = _anthropic_report(prov["key"], prov["model"], user_msg, OPTIONS_SYSTEM)
+            else:
+                text = _openai_compatible_report(
+                    prov["base_url"], prov["key"], prov["model"], user_msg, OPTIONS_SYSTEM
+                )
+            if not text:
+                errors.append(f"{prov['label']} ({prov['model']}) returned empty content.")
+        except Exception as e:
+            err_msg = f"{prov['label']} ({prov['model']}) failed: {str(e)}"
+            print(f"AI options report via {prov['id']} failed for {ticker}: {e}")
+            errors.append(err_msg)
+        if text:
+            used = prov["id"]
+            break
+
+    if not text:
+        err_report = "All configured AI providers failed to generate the report:\n- " + "\n- ".join(errors)
+        return None, err_report
+
+    html = _to_html(text)
+    db.cache_set("ai_options_report", cache_key, {"html": html, "provider": used})
+    return html, None

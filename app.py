@@ -1939,18 +1939,29 @@ def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
             c_bid = c_opt.get('bid', 0)
             c_ask = c_opt.get('ask', 0)
             c_last = c_opt.get('lastPrice', 0)
-            
+            c_change = c_opt.get('change', 0)
+            c_pct_change = c_opt.get('percentChange', 0)
+
             p_bid = p_opt.get('bid', 0)
             p_ask = p_opt.get('ask', 0)
             p_last = p_opt.get('lastPrice', 0)
-            
+            p_change = p_opt.get('change', 0)
+            p_pct_change = p_opt.get('percentChange', 0)
+
+            def _safe_num(v):
+                if v is None or (isinstance(v, float) and np.isnan(v)):
+                    return 0
+                return v
+
             rows.append({
                 'strike': strike,
                 'call_bid': c_bid if not np.isnan(c_bid) else 0,
                 'call_ask': c_ask if not np.isnan(c_ask) else 0,
                 'call_last': c_last if not np.isnan(c_last) else 0,
-                'call_volume': int(c_opt.get('volume', 0)) if (c_opt.get('volume') is not None and not np.isnan(c_opt.get('volume', 0))) else 0,
-                'call_oi': int(c_opt.get('openInterest', 0)) if (c_opt.get('openInterest') is not None and not np.isnan(c_opt.get('openInterest', 0))) else 0,
+                'call_change': round(_safe_num(c_change), 2),
+                'call_pct_change': round(_safe_num(c_pct_change), 1),
+                'call_volume': int(_safe_num(c_opt.get('volume', 0))),
+                'call_oi': int(_safe_num(c_opt.get('openInterest', 0))),
                 'call_iv': round(c_iv * 100, 2),
                 'call_delta': c_greeks['call_delta'] if c_greeks else 'N/A',
                 'call_gamma': c_greeks['gamma'] if c_greeks else 'N/A',
@@ -1960,8 +1971,10 @@ def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
                 'put_bid': p_bid if not np.isnan(p_bid) else 0,
                 'put_ask': p_ask if not np.isnan(p_ask) else 0,
                 'put_last': p_last if not np.isnan(p_last) else 0,
-                'put_volume': int(p_opt.get('volume', 0)) if (p_opt.get('volume') is not None and not np.isnan(p_opt.get('volume', 0))) else 0,
-                'put_oi': int(p_opt.get('openInterest', 0)) if (p_opt.get('openInterest') is not None and not np.isnan(p_opt.get('openInterest', 0))) else 0,
+                'put_change': round(_safe_num(p_change), 2),
+                'put_pct_change': round(_safe_num(p_pct_change), 1),
+                'put_volume': int(_safe_num(p_opt.get('volume', 0))),
+                'put_oi': int(_safe_num(p_opt.get('openInterest', 0))),
                 'put_iv': round(p_iv * 100, 2),
                 'put_delta': p_greeks['put_delta'] if p_greeks else 'N/A',
                 'put_gamma': p_greeks['gamma'] if p_greeks else 'N/A',
@@ -2846,6 +2859,175 @@ def options_greeks_api(ticker):
         return jsonify({"error": f"Could not retrieve options data for {ticker}"}), 404
         
     return jsonify(data)
+
+
+def compute_options_analysis(ticker, expiration_date=None, rf_rate=0.045):
+    """Compile options statistics and Tastytrade-style metrics."""
+    try:
+        greeks_data = get_options_greeks_data(ticker, expiration_date, rf_rate)
+        if not greeks_data:
+            return None
+        
+        spot_price = greeks_data['spot_price']
+        rows = greeks_data['options']
+        selected_expiration = greeks_data['selected_expiration']
+        days_to_exp = greeks_data['days_to_expiration']
+        
+        # Spot price history for HV30/90
+        df = get_or_fetch_prices(ticker)
+        hv30, hv90, iv_rank, iv_percentile = 0.0, 0.0, 0.0, 0.0
+        vol_history = pd.Series(dtype=float)
+        if df is not None and not df.empty and len(df) > 30:
+            returns = df['close'].pct_change()
+            hv30 = float(returns.tail(30).std() * np.sqrt(252)) * 100
+            hv90 = float(returns.tail(90).std() * np.sqrt(252)) * 100
+            
+            rolling_30d = returns.rolling(30).std() * np.sqrt(252) * 100
+            vol_history = rolling_30d.dropna().tail(252)
+        
+        # Calculate ATM IV
+        strikes = [r['strike'] for r in rows]
+        closest_strike = min(strikes, key=lambda s: abs(s - spot_price)) if strikes else spot_price
+        
+        atm_row = next((r for r in rows if r['strike'] == closest_strike), None)
+        c_iv = atm_row['call_iv'] if atm_row else 0.0
+        p_iv = atm_row['put_iv'] if atm_row else 0.0
+        
+        ivs = [v for v in [c_iv, p_iv] if v > 1.0]
+        atm_iv = float(np.mean(ivs)) if ivs else 0.0
+        
+        # Volatility Rank and Percentile compared to historical realized volatility
+        if not vol_history.empty and atm_iv > 0:
+            min_vol = float(vol_history.min())
+            max_vol = float(vol_history.max())
+            iv_rank = ((atm_iv - min_vol) / (max_vol - min_vol)) * 100 if max_vol > min_vol else 50.0
+            iv_rank = max(0.0, min(100.0, iv_rank))
+            
+            below_count = (vol_history < atm_iv).sum()
+            iv_percentile = (below_count / len(vol_history)) * 100
+        else:
+            iv_rank, iv_percentile = 50.0, 50.0
+            
+        # Expected Move
+        expected_move_bs = 0.85 * spot_price * (atm_iv / 100.0) * np.sqrt(days_to_exp / 365.0) if atm_iv > 0 else 0.0
+        
+        c_bid = atm_row['call_bid'] if atm_row else 0
+        c_ask = atm_row['call_ask'] if atm_row else 0
+        p_bid = atm_row['put_bid'] if atm_row else 0
+        p_ask = atm_row['put_ask'] if atm_row else 0
+        
+        c_mid = (c_bid + c_ask) / 2.0
+        p_mid = (p_bid + p_ask) / 2.0
+        
+        expected_move_straddle = c_mid + p_mid if (c_mid > 0 and p_mid > 0) else expected_move_bs
+        
+        # Put-Call Ratio (PCR)
+        total_call_vol = sum(r.get('call_volume', 0) for r in rows)
+        total_put_vol = sum(r.get('put_volume', 0) for r in rows)
+        total_call_oi = sum(r.get('call_oi', 0) for r in rows)
+        total_put_oi = sum(r.get('put_oi', 0) for r in rows)
+        
+        vol_pcr = total_put_vol / total_call_vol if total_call_vol > 0 else 0
+        oi_pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
+        
+        # Max Pain
+        pains = {}
+        for strike_i in strikes:
+            pain = 0
+            for r in rows:
+                strike = r['strike']
+                call_oi = r.get('call_oi', 0)
+                put_oi = r.get('put_oi', 0)
+                if strike < strike_i:
+                    pain += call_oi * (strike_i - strike)
+                elif strike > strike_i:
+                    pain += put_oi * (strike - strike_i)
+            pains[strike_i] = pain
+            
+        max_pain = min(pains, key=pains.get) if pains else spot_price
+        
+        # GEX stats
+        gex_profile = get_gex_profile(ticker, spot_price, rf_rate)
+        gex_stats = gex_profile['stats'] if gex_profile else None
+        
+        # Strategy recommendations
+        selling_environment = atm_iv > hv30
+        strategy_recommendation = ""
+        strategy_rationale = ""
+        if iv_rank > 50:
+            strategy_recommendation = "Sell Premium (Strangle / Iron Condor)"
+            strategy_rationale = f"IV Rank is high ({iv_rank:.1f}%), meaning implied volatility is elevated relative to history. Selling premium takes advantage of the volatility risk premium (VRP) contraction."
+        elif selling_environment:
+            strategy_recommendation = "Sell Premium (Credit Spreads / Covered Call)"
+            strategy_rationale = f"ATM Implied Volatility ({atm_iv:.1f}%) is trading at a premium over 30d Realized Volatility ({hv30:.1f}%). Option pricing is rich relative to actual stock movement."
+        else:
+            strategy_recommendation = "Buy Premium / Defined Risk (Debit Spreads / Calendar Spreads)"
+            strategy_rationale = f"Implied Volatility ({atm_iv:.1f}%) is low and trading at a discount to realized volatility. Option premium is cheap, making buying strategies or debit spreads more attractive."
+            
+        return {
+            'ticker': ticker.upper(),
+            'spot_price': round(spot_price, 2),
+            'selected_expiration': selected_expiration,
+            'days_to_expiration': days_to_exp,
+            'expirations': greeks_data['expirations'],
+            'hv30': round(hv30, 2),
+            'hv90': round(hv90, 2),
+            'atm_iv': round(atm_iv, 2),
+            'iv_rank': round(iv_rank, 1),
+            'iv_percentile': round(iv_percentile, 1),
+            'expected_move_bs': round(expected_move_bs, 2),
+            'expected_move_straddle': round(expected_move_straddle, 2),
+            'vol_pcr': round(vol_pcr, 3),
+            'oi_pcr': round(oi_pcr, 3),
+            'max_pain': round(max_pain, 2),
+            'total_call_vol': total_call_vol,
+            'total_put_vol': total_put_vol,
+            'total_call_oi': total_call_oi,
+            'total_put_oi': total_put_oi,
+            'gex_stats': gex_stats,
+            'strategy_recommendation': strategy_recommendation,
+            'strategy_rationale': strategy_rationale,
+            'selling_environment': selling_environment
+        }
+    except Exception as e:
+        print(f"Error computing options analysis: {e}")
+        return None
+
+
+@app.route('/api/options-analysis/<ticker>')
+def options_analysis_api(ticker):
+    expiration = request.args.get('expiration', '')
+    rf_rate_raw = request.args.get('rf_rate', '0.045')
+    try:
+        rf_rate = float(rf_rate_raw)
+    except ValueError:
+        rf_rate = 0.045
+        
+    data = compute_options_analysis(ticker, expiration, rf_rate)
+    if not data:
+        return jsonify({"error": f"Could not compute options analysis for {ticker}"}), 404
+        
+    return jsonify(data)
+
+
+@app.route('/api/options-ai-report/<ticker>')
+def options_ai_report_api(ticker):
+    expiration = request.args.get('expiration', '')
+    rf_rate_raw = request.args.get('rf_rate', '0.045')
+    try:
+        rf_rate = float(rf_rate_raw)
+    except ValueError:
+        rf_rate = 0.045
+        
+    data = compute_options_analysis(ticker, expiration, rf_rate)
+    if not data:
+        return jsonify({"error": f"Could not retrieve options data for {ticker}"}), 404
+        
+    report, error = ai.generate_options_report(ticker, data)
+    if error:
+        return jsonify({"error": error}), 500
+        
+    return jsonify({"html": report})
 
 
 @app.route('/ai-summary')
