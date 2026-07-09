@@ -72,6 +72,7 @@
     
     <!-- Controls & Search -->
     <div class="flex flex-wrap items-center gap-3">
+      {% if not ticker %}
       <form method="GET" action="/live" class="flex gap-2">
         <input 
           type="text" 
@@ -85,6 +86,7 @@
           Analyze
         </button>
       </form>
+      {% endif %}
       
       <!-- WebSocket / Simulation Status Indicator -->
       <div id="connection-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
@@ -146,6 +148,57 @@
       <div class="flex items-baseline gap-2 mt-1">
         <span id="vol-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Second metrics row: Trade Velocity + Flow Imbalance -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+    <!-- Trade Velocity (TPS) -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">Trade Velocity (1m)</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="trades-velocity" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">0.0</span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400 font-mono">t/s</span>
+      </div>
+      <p class="text-[10px] text-zinc-400 mt-1">Trades in last 60s: <span id="trades-count-60s" class="font-mono font-semibold">0</span></p>
+    </div>
+
+    <!-- Trade Flow Imbalance -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">Trade Flow Imbalance</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="flow-imbalance-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
+      </div>
+      <div class="flex items-center gap-1.5 mt-2">
+        <div class="flex-1 h-1.5 bg-rose-500/10 rounded-full overflow-hidden">
+          <div id="flow-sell-bar" class="h-full bg-rose-500 transition-all" style="width: 50%"></div>
+        </div>
+        <div class="flex-1 h-1.5 bg-emerald-500/10 rounded-full overflow-hidden">
+          <div id="flow-buy-bar" class="h-full bg-emerald-500 transition-all" style="width: 50%"></div>
+        </div>
+      </div>
+      <p class="text-[10px] text-zinc-400 mt-1">
+        <span class="text-emerald-500 font-semibold">Buy: <span id="flow-buy-pct">50%</span></span> ·
+        <span class="text-rose-500 font-semibold">Sell: <span id="flow-sell-pct">50%</span></span>
+      </p>
+    </div>
+
+    <!-- Volume-Weighted Direction -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">VWAP Distance</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="vwap-distance-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">--</span>
+      </div>
+      <p class="text-[10px] text-zinc-400 mt-1">Price vs session VWAP</p>
+    </div>
+
+    <!-- Cumulative Volume -->
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+      <p class="text-xs font-medium text-zinc-400">Cumulative Volume</p>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span id="cum-volume-val" class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 font-mono">0</span>
+      </div>
+      <p class="text-[10px] text-zinc-400 mt-1">Total shares traded this session</p>
     </div>
   </div>
 
@@ -658,6 +711,10 @@
   let totalVal = 0;
   let vwap = 0;
   let orderBook = { bids: [], asks: [] };
+
+  // Trade flow tracking — for velocity (TPS) and buy/sell imbalance
+  let tradeTimestamps = [];   // timestamps of recent trades for TPS calculation
+  let buyCount = 0, sellCount = 0;  // buy/sell trade counts this session
   
   // Option Greeks visualizer state
   let optionsData = null;
@@ -1449,7 +1506,13 @@
     const select = document.getElementById('expiration-select');
     if (!select) return;
     
-    select.innerHTML = data.expirations.map(d => `<option value="${d}">${d}</option>`).join('');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    select.innerHTML = data.expirations.map(d => {
+      const expDate = new Date(d + 'T00:00:00');
+      const dte = Math.round((expDate - today) / 86400000);
+      return `<option value="${d}">${d} (${dte}d)</option>`;
+    }).join('');
     document.getElementById('dte-val').innerText = `${data.days_to_expiration} days`;
   }
 

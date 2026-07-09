@@ -23,25 +23,13 @@
 {% endmacro %}
 
 {% block content %}
-<!-- Search -->
-<div class="mb-8">
-  <form method="get" action="/positioning" class="flex gap-3 max-w-sm">
-    <input type="text" name="ticker" value="{{ ticker }}" placeholder="Enter ticker (e.g. AAPL)"
-      class="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm font-mono uppercase"
-      autocomplete="off" spellcheck="false" />
-    <button type="submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white font-semibold text-sm transition-colors">Load</button>
-  </form>
-</div>
-
 {% if data %}
 <!-- Header -->
-<div class="flex flex-wrap items-baseline gap-3 mb-8">
-  <h1 class="text-3xl font-bold tracking-tight">{{ data.ticker }}</h1>
-  <span class="text-sm text-zinc-400">Market Positioning</span>
-  <a href="/analytics?ticker={{ data.ticker }}"
-     class="ml-auto text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
-    Analytics →
-  </a>
+<div class="flex items-baseline gap-3 mb-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+  <div class="flex items-baseline gap-3">
+    <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">{{ data.ticker }}</h1>
+    <span class="text-xs text-zinc-400 font-medium">Market Positioning</span>
+  </div>
 </div>
 
 <div class="space-y-8">
@@ -199,12 +187,27 @@
 </div>
 
 {% else %}
-<div class="flex flex-col items-center justify-center py-24 text-center">
-  <svg class="w-10 h-10 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<!-- Empty state -->
+<div class="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm p-6 max-w-md mx-auto">
+  <svg class="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
       d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9 6 9-6M3 7l9-4 9 4"/>
   </svg>
-  <p class="text-zinc-400 dark:text-zinc-600 text-sm">Enter a ticker to see institutional, insider, and valuation data.</p>
+  <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-2">No Active Ticker Selected</h2>
+  <p class="text-zinc-550 dark:text-zinc-400 text-sm mb-6 max-w-xs">Enter a stock ticker below to see institutional, insider, and valuation data.</p>
+  
+  <form method="get" action="/positioning" class="flex gap-2 w-full">
+    <input
+      type="text"
+      name="ticker"
+      placeholder="Enter ticker (e.g. AAPL)"
+      class="flex-1 px-3 py-2 text-sm bg-zinc-100 dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 font-mono"
+      required
+    />
+    <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow transition-colors">
+      Analyze
+    </button>
+  </form>
 </div>
 {% endif %}
 {% endblock %}

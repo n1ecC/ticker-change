@@ -22,25 +22,6 @@
 {% endblock %}
 
 {% block content %}
-<!-- Search bar -->
-<div class="mb-8">
-  <form method="get" action="/analytics" class="flex gap-3 max-w-sm">
-    <input
-      type="text"
-      name="ticker"
-      value="{{ ticker }}"
-      placeholder="Enter ticker (e.g. AAPL)"
-      class="flex-1 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm font-mono uppercase"
-      autocomplete="off"
-      spellcheck="false"
-    />
-    <button
-      type="submit"
-      class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm transition-colors"
-    >Analyse</button>
-  </form>
-</div>
-
 {% if error %}
 <div class="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-6 py-4 text-rose-700 dark:text-rose-300 text-sm">
   {{ error }}
@@ -48,21 +29,13 @@
 
 {% elif data %}
 <!-- Header -->
-<div class="flex flex-wrap items-baseline gap-3 mb-8">
-  <h1 class="text-3xl font-bold tracking-tight">{{ data.ticker }}</h1>
-  <span class="text-2xl font-mono font-semibold text-zinc-500 dark:text-zinc-400">${{ "%.2f"|format(data.current_price) }}</span>
-  {% if data.fundamentals and data.fundamentals.get('Name') %}
-  <span class="text-sm text-zinc-400 dark:text-zinc-500">{{ data.fundamentals['Name'] }}</span>
-  {% endif %}
-  <div class="ml-auto flex gap-2">
-    <a href="/stock?ticker={{ data.ticker }}"
-       class="text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
-      ← Price table
-    </a>
-    <a href="/positioning?ticker={{ data.ticker }}"
-       class="text-xs px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">
-      Positioning →
-    </a>
+<div class="flex items-baseline gap-3 mb-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+  <div class="flex items-baseline gap-3">
+    <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">{{ data.ticker }}</h1>
+    <span class="text-xl font-mono font-semibold text-zinc-500 dark:text-zinc-400">${{ "%.2f"|format(data.current_price) }}</span>
+    {% if data.fundamentals and data.fundamentals.get('Name') %}
+    <span class="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{{ data.fundamentals['Name'] }}</span>
+    {% endif %}
   </div>
 </div>
 
@@ -604,12 +577,26 @@
 
 {% else %}
 <!-- Empty state -->
-<div class="flex flex-col items-center justify-center py-24 text-center">
-  <svg class="w-10 h-10 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm p-6 max-w-md mx-auto">
+  <svg class="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
       d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
   </svg>
-  <p class="text-zinc-400 dark:text-zinc-600 text-sm">Enter a ticker above to run analytics.</p>
+  <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-2">No Active Ticker Selected</h2>
+  <p class="text-zinc-550 dark:text-zinc-400 text-sm mb-6 max-w-xs">Enter a stock ticker below to run advanced quantitative risk analytics.</p>
+  
+  <form method="get" action="/analytics" class="flex gap-2 w-full">
+    <input
+      type="text"
+      name="ticker"
+      placeholder="Enter ticker (e.g. AAPL)"
+      class="flex-1 px-3 py-2 text-sm bg-zinc-100 dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 font-mono"
+      required
+    />
+    <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow transition-colors">
+      Analyze
+    </button>
+  </form>
 </div>
 {% endif %}
 {% endblock %}

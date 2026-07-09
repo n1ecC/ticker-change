@@ -216,6 +216,43 @@
       </div>
     </nav>
 
+    <!-- Ticker Sub-Navbar -->
+    <div id="ticker-sub-nav" class="hidden bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 py-2.5">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3.5">
+          <!-- Active Ticker Pill -->
+          <div class="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400 font-bold text-sm uppercase tracking-wider font-mono">
+            <span id="sub-nav-ticker">--</span>
+          </div>
+          <span id="sub-nav-desc" class="text-xs text-zinc-500 dark:text-zinc-400 font-medium"></span>
+        </div>
+
+        <!-- Links to specific views for this ticker -->
+        <div class="flex flex-wrap items-center gap-1 sm:gap-2">
+          <a id="sub-link-stock" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Price Table</a>
+          <a id="sub-link-analytics" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Risk Analytics</a>
+          <a id="sub-link-positioning" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Market Positioning</a>
+          <a id="sub-link-live" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Live Microstructure & Options</a>
+          <a id="sub-link-ai-summary" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">AI Strategy Report</a>
+        </div>
+
+        <!-- Ticker Search in Navbar -->
+        <form id="sub-nav-search-form" class="flex items-center m-0" onsubmit="handleSubNavSearch(event)">
+          <div class="relative">
+            <input 
+              id="sub-nav-search-input"
+              type="text" 
+              placeholder="Search ticker..." 
+              class="w-36 sm:w-44 px-3 py-1.5 pl-8 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100"
+            />
+            <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {% block content %}{% endblock %}
     </main>
@@ -253,17 +290,17 @@
       });
     </script>
     <script>
-      // Persist the active ticker across Analytics / Positioning / Stock nav links.
-      // Priority: URL param "ticker" > localStorage "last_ticker"
+      // Persist the active ticker and configure sub-navbar
       (function () {
         const params = new URLSearchParams(window.location.search);
-        const urlTicker = params.get('ticker');
+        const urlTicker = params.get('ticker') || params.get('symbol');
         if (urlTicker) {
           localStorage.setItem('last_ticker', urlTicker.toUpperCase());
         }
         const ticker = urlTicker || localStorage.getItem('last_ticker');
         if (!ticker) return;
 
+        // Configure main nav links
         const links = {
           'brand-link':      '/stock?ticker=' + ticker,
           'nav-analytics':   '/analytics?ticker=' + ticker,
@@ -275,7 +312,57 @@
           const el = document.getElementById(id);
           if (el) el.href = href;
         });
+
+        // Show and configure sub-navbar
+        const subNav = document.getElementById('ticker-sub-nav');
+        if (subNav) {
+          subNav.classList.remove('hidden');
+          document.getElementById('sub-nav-ticker').innerText = ticker;
+          
+          const subLinks = {
+            'sub-link-stock':       '/stock?ticker=' + ticker,
+            'sub-link-analytics':   '/analytics?ticker=' + ticker,
+            'sub-link-positioning': '/positioning?ticker=' + ticker,
+            'sub-link-live':        '/live?ticker=' + ticker,
+            'sub-link-ai-summary':  '/ai-summary?ticker=' + ticker,
+          };
+          
+          const path = window.location.pathname;
+          Object.entries(subLinks).forEach(([id, href]) => {
+            const el = document.getElementById(id);
+            if (el) {
+              el.href = href;
+              // Highlight active tab
+              const isActive = (id === 'sub-link-stock' && path === '/stock') ||
+                               (id === 'sub-link-analytics' && path === '/analytics') ||
+                               (id === 'sub-link-positioning' && path === '/positioning') ||
+                               (id === 'sub-link-live' && path === '/live') ||
+                               (id === 'sub-link-ai-summary' && path === '/ai-summary');
+              if (isActive) {
+                el.className = "text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500 text-zinc-950 shadow-sm transition-all";
+              }
+            }
+          });
+          
+          const searchInput = document.getElementById('sub-nav-search-input');
+          if (searchInput) {
+            searchInput.value = ticker;
+          }
+        }
       })();
+
+      function handleSubNavSearch(e) {
+        e.preventDefault();
+        const val = document.getElementById('sub-nav-search-input').value.trim().toUpperCase();
+        if (!val) return;
+        
+        const path = window.location.pathname;
+        let target = '/stock';
+        if (['/stock', '/analytics', '/positioning', '/live', '/ai-summary'].includes(path)) {
+          target = path;
+        }
+        window.location.href = target + '?ticker=' + val;
+      }
     </script>
     {% block scripts %}{% endblock %}
   </body>
