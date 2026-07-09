@@ -37,7 +37,7 @@ _SESSION.mount("http://", _ADAPTER)
 # /settings page). When its free-tier quota is exhausted, calls automatically
 # roll over to any user-supplied keys saved there (see _finnhub_get / _fmp_get).
 _DEV_FINNHUB_KEY = ""
-_DEFAULT_SEC_UA = "ticker-change-dashboard contact@example.com"
+_DEFAULT_SEC_UA = "anonymous@example.com"
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 FMP_BASE = "https://financialmodelingprep.com/api/v3"
@@ -92,8 +92,9 @@ def active_finnhub_key() -> str:
 
 def sec_user_agent() -> str:
     """SEC contact UA: user setting overrides env, which overrides the default."""
-    return (db.get_setting("sec_user_agent")
-            or os.environ.get("SEC_USER_AGENT", _DEFAULT_SEC_UA)).strip()
+    setting = (db.get_setting("sec_user_agent") or "").strip()
+    env = (os.environ.get("SEC_USER_AGENT") or "").strip()
+    return setting or env or _DEFAULT_SEC_UA
 
 
 # --------------------------------------------------------------------------- #
