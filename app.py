@@ -35,6 +35,16 @@ def inject_ui_mode():
     base.html so structural rendering can differ server-side."""
     return {'excel_mode': request.cookies.get('ui_mode') == 'excel'}
 
+
+@app.template_filter('xlfmt')
+def xlfmt(val):
+    """Excel accounting style: negatives render in parentheses, e.g. (3.42%).
+    Coloring comes from the .xl-neg class, applied by the _excel.html macros."""
+    s = str(val)
+    if s[:1] in ('-', '−'):
+        return f'({s[1:]})'
+    return s
+
 with app.app_context():
     init_db()
 
