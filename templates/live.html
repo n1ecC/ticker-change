@@ -225,6 +225,14 @@
     </div>
   </div>
 
+  <!-- Simulated Feed / Market Hours Notice -->
+  <div id="sim-hours-notice" class="hidden bg-sky-500/10 border border-sky-500/20 text-sky-600 dark:text-sky-400 px-4 py-3 rounded-lg flex items-center gap-2 text-xs font-semibold">
+    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span id="sim-hours-notice-text"></span>
+  </div>
+
   <!-- Tab 1: Market Microstructure -->
   <div id="tab-content-microstructure" class="space-y-6">
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -697,6 +705,8 @@
   let socket = null;
   let simInterval = null;
   let bookInterval = null;
+  let marketSessionInterval = null;  // 60s watcher — swaps sim/live when the ET session changes
+  let currentStatus = 'disconnected';
   let spotPollInterval = null;   // 30s spot price refresh
   let greeksPollInterval = null;  // 60s options greeks refresh (active tab only)
   
@@ -968,19 +978,72 @@
     }
   }
 
+  // U.S. equity market session, computed in exchange time (America/New_York).
+  // Intl handles the viewer's local timezone and DST, so 1 AM ET is 'closed'
+  // no matter where the browser is. Sessions (Mon–Fri):
+  //   pre 4:00–9:30 ET · regular 9:30–16:00 ET · post 16:00–20:00 ET · closed otherwise
+  function getMarketSession() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23'
+    }).formatToParts(new Date());
+    const get = t => parts.find(p => p.type === t).value;
+    const weekday = get('weekday');
+    if (weekday === 'Sat' || weekday === 'Sun') return 'closed';
+    // % 24 guards engines that report midnight as "24"
+    const minutes = (parseInt(get('hour'), 10) % 24) * 60 + parseInt(get('minute'), 10);
+    if (minutes >= 4 * 60 && minutes < 9 * 60 + 30) return 'pre';
+    if (minutes >= 9 * 60 + 30 && minutes < 16 * 60) return 'regular';
+    if (minutes >= 16 * 60 && minutes < 20 * 60) return 'post';
+    return 'closed';
+  }
+
+  const SESSION_LABELS = {
+    closed: 'Market Closed',
+    pre: 'Pre-Market',
+    regular: 'Market Open',
+    post: 'After-Hours'
+  };
+
+  // Show/hide the market-hours notice under the tab bar. Visible only while
+  // the simulated feed is running, with wording matched to the current session.
+  function updateSimNotice() {
+    const notice = document.getElementById('sim-hours-notice');
+    const textEl = document.getElementById('sim-hours-notice-text');
+    if (!notice || !textEl) return;
+
+    if (currentStatus !== 'simulated') {
+      notice.classList.add('hidden');
+      return;
+    }
+
+    const session = getMarketSession();
+    if (session === 'closed') {
+      textEl.innerText = 'Simulated feed — synthetic ticks are shown only during non-market hours. The U.S. market is closed right now (overnight/weekend). Live streaming resumes automatically when pre-market opens at 4:00 AM ET.';
+    } else if (session === 'pre') {
+      textEl.innerText = 'Simulated feed — synthetic ticks are shown only while live data is unavailable. It is currently pre-market (4:00–9:30 AM ET); live extended-hours streaming requires a working Finnhub connection.';
+    } else if (session === 'post') {
+      textEl.innerText = 'Simulated feed — synthetic ticks are shown only while live data is unavailable. It is currently after-hours (4:00–8:00 PM ET); live extended-hours streaming requires a working Finnhub connection.';
+    } else {
+      textEl.innerText = 'Simulated feed — the market is open (9:30 AM–4:00 PM ET) but the live websocket is unavailable (missing FINNHUB_API_KEY or connection error), so synthetic ticks are shown instead.';
+    }
+    notice.classList.remove('hidden');
+  }
+
   // Update Status Badge
   function updateStatus(status) {
+    currentStatus = status;
     const badge = document.getElementById('connection-status-badge');
-    if (!badge) return;
-    
+    if (!badge) { updateSimNotice(); return; }
+
     badge.className = "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold";
-    
+
     if (status === 'connected') {
       badge.classList.add('bg-emerald-500/10', 'text-emerald-600', 'dark:text-emerald-400');
       badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> <span>Live WebSocket</span>`;
     } else if (status === 'simulated') {
       badge.classList.add('bg-amber-500/10', 'text-amber-600', 'dark:text-amber-400');
-      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> <span>Simulated Feed</span>`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> <span>Simulated Feed · ${SESSION_LABELS[getMarketSession()]}</span>`;
     } else if (status === 'error') {
       badge.classList.add('bg-rose-500/10', 'text-rose-600', 'dark:text-rose-400');
       badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span> <span>WS Error</span>`;
@@ -988,20 +1051,33 @@
       badge.classList.add('bg-zinc-100', 'dark:bg-zinc-800', 'text-zinc-600', 'dark:text-zinc-400');
       badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-zinc-400"></span> <span>Disconnected</span>`;
     }
+
+    updateSimNotice();
   }
 
   // WebSocket Connection
   function connectWebSocket() {
     if (socket) {
+      // Detach the close handler so the dying socket can't spawn a second simulator
+      socket.onclose = null;
       socket.close();
+      socket = null;
     }
-    if (simInterval) clearInterval(simInterval);
-    
+    if (simInterval) { clearInterval(simInterval); simInterval = null; }
+    startSessionWatcher();
+
     if (!hasKey) {
       startSimulation();
       return;
     }
-    
+
+    // Overnight/weekend (e.g. 1 AM ET) no trades stream at all — don't hold a
+    // silent socket; simulate, and the session watcher goes live at 4:00 AM ET.
+    if (getMarketSession() === 'closed') {
+      startSimulation();
+      return;
+    }
+
     updateStatus('connecting');
     socket = new WebSocket(`wss://ws.finnhub.io?token=${finnhubKey}`);
     
@@ -1033,10 +1109,27 @@
     };
   }
 
+  // Re-evaluate the ET session every minute: refresh the notice/badge wording,
+  // and if the market (re)opened while simulating with a key available, go live.
+  // Conversely, when the session ends (8:00 PM ET) the live socket goes quiet on
+  // its own and falls back to the simulator via onclose — no action needed here.
+  function startSessionWatcher() {
+    if (marketSessionInterval) return;
+    marketSessionInterval = setInterval(() => {
+      if (currentStatus === 'simulated') {
+        updateStatus('simulated');  // refreshes badge session tag + notice text
+        if (hasKey && getMarketSession() !== 'closed') {
+          connectWebSocket();
+        }
+      }
+    }, 60000);
+  }
+
   // Local Microstructure Simulation Mode
   function startSimulation() {
+    if (simInterval) clearInterval(simInterval);
     updateStatus('simulated');
-    
+
     let tickCount = 0;
     simInterval = setInterval(() => {
       const vol = 0.0015;
@@ -1222,6 +1315,7 @@
     if (socket) socket.close();
     if (simInterval) clearInterval(simInterval);
     if (bookInterval) clearInterval(bookInterval);
+    if (marketSessionInterval) clearInterval(marketSessionInterval);
   });
 
   // Initialize base book depth
