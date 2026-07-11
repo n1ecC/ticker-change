@@ -1961,66 +1961,99 @@ def calculate_greeks(s, k, t, v, r=0.045):
 def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
     """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price.
 
-    Uses the SQLite api_cache to persist the raw option chain (calls/puts
-    DataFrames + spot price) so the app still works after hours or when
-    yfinance is rate-limited. The cache TTL is 1 hour during market hours
-    and 12 hours overnight/weekends — stale-but-present beats a blank table.
+    Uses the SQLite api_cache to persist both the expirations list and the raw
+    option chain (calls/puts + spot price) so the app still works after hours
+    or when yfinance is rate-limited. Every network call falls back to the
+    cache — first fresh, then stale up to a week old — because
+    stale-but-present beats a blank table.
     """
     from db import cache_get, cache_set
 
+    STALE_TTL_HOURS = 24 * 7  # last-resort fallback when Yahoo is down/rate-limited
+
     try:
-        stock = yf.Ticker(ticker.upper())
-        expirations = stock.options
+        tkr = ticker.upper()
+        stock = yf.Ticker(tkr)
+
+        # --- Expirations: cache-first so the 60s greeks poll and the cache
+        # warmer don't hit Yahoo for a list that changes at most daily ---
+        exps_key = f"optexps:{tkr}"
+        expirations = cache_get("yfinance", exps_key, ttl_hours=12)
+        if not expirations:
+            try:
+                expirations = list(stock.options or [])
+            except Exception as e:
+                print(f"[options] expirations fetch failed for {tkr}: {type(e).__name__}: {e}")
+                expirations = []
+            if expirations:
+                cache_set("yfinance", exps_key, expirations)
+            else:
+                expirations = cache_get("yfinance", exps_key, ttl_hours=STALE_TTL_HOURS) or []
+        # Drop dates that expired while sitting in the cache
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        expirations = [d for d in expirations if d >= today_str]
         if not expirations:
             return None
 
         if not expiration_date or expiration_date not in expirations:
             expiration_date = expirations[0]
 
-        # --- Cache the raw chain so after-hours / rate-limited requests still work ---
-        cache_key = f"optchain:{ticker.upper()}:{expiration_date}"
+        # --- Chain: fresh cache → live fetch → stale cache ---
+        cache_key = f"optchain:{tkr}:{expiration_date}"
         cached = cache_get("yfinance", cache_key, ttl_hours=4)
+        calls = puts = spot_price = None
+
+        if cached is None:
+            try:
+                chain = stock.option_chain(expiration_date)
+                calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+                puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+
+                # Determine spot price
+                hist = stock.history(period="1d")
+                if hist.empty:
+                    df = get_or_fetch_prices(ticker)
+                    if df is not None and not df.empty:
+                        spot_price = float(df['close'].iloc[-1])
+                    else:
+                        spot_price = None
+                else:
+                    spot_price = float(hist['Close'].iloc[-1])
+
+                if not spot_price:
+                    raise ValueError("no spot price available")
+
+                # Serialize for cache — convert Timestamps to ISO strings so
+                # json.dumps (inside cache_set) doesn't choke on numpy/pandas types.
+                def _chain_records(df):
+                    if df.empty:
+                        return []
+                    out = df.copy()
+                    for col in out.columns:
+                        if str(out[col].dtype).startswith('datetime'):
+                            out[col] = out[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+                    return out.to_dict('records')
+
+                cache_set("yfinance", cache_key, {
+                    'calls': _chain_records(calls),
+                    'puts': _chain_records(puts),
+                    'spot_price': spot_price,
+                })
+            except Exception as e:
+                print(f"[options] chain fetch failed for {tkr} {expiration_date}: {type(e).__name__}: {e}")
+                cached = cache_get("yfinance", cache_key, ttl_hours=STALE_TTL_HOURS)
+                if cached is None:
+                    return None
 
         if cached is not None:
             calls = pd.DataFrame(cached.get('calls', []))
             puts = pd.DataFrame(cached.get('puts', []))
             spot_price = cached.get('spot_price')
-        else:
-            chain = stock.option_chain(expiration_date)
-            calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
-            puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
 
-            # Determine spot price
-            hist = stock.history(period="1d")
-            if hist.empty:
-                df = get_or_fetch_prices(ticker)
-                if df is not None and not df.empty:
-                    spot_price = float(df['close'].iloc[-1])
-                else:
-                    spot_price = None
-            else:
-                spot_price = float(hist['Close'].iloc[-1])
+        if not spot_price:
+            return None
 
-            if not spot_price:
-                return None
 
-            # Serialize for cache — convert Timestamps to ISO strings so
-            # json.dumps (inside cache_set) doesn't choke on numpy/pandas types.
-            def _chain_records(df):
-                if df.empty:
-                    return []
-                out = df.copy()
-                for col in out.columns:
-                    if str(out[col].dtype).startswith('datetime'):
-                        out[col] = out[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
-                return out.to_dict('records')
-
-            cache_set("yfinance", cache_key, {
-                'calls': _chain_records(calls),
-                'puts': _chain_records(puts),
-                'spot_price': spot_price,
-            })
-            
         exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
         today = datetime.now()
         days_to_exp = (exp_dt - today).days + 1
@@ -2117,7 +2150,9 @@ def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
             'options': rows
         }
     except Exception as e:
-        print(f"Error compiling options greeks: {e}")
+        import traceback
+        print(f"Error compiling options greeks for {ticker}: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None
 
 
