@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import metric %}
+{% from "_excel.html" import panel, stat_grid with context %}
 {% block title %}Analytics — {{ ticker }}{% endblock %}
 
 {% block head_extra %}
@@ -52,8 +53,7 @@
 {% endif %}
 
 <!-- Risk stat cards -->
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-  {% set stats = [
+{% set stats = [
     ('Annualised Vol', data.stats.annualised_vol ~ '%', '', 'annualised_vol'),
     ('Max Drawdown',   data.stats.max_drawdown ~ '%',  'text-rose-500', 'max_drawdown'),
     ('Skewness',       data.stats.skewness,             '', 'skewness'),
@@ -74,18 +74,11 @@
     ('Data Points',    data.stats.data_points,              'text-zinc-400', none),
   ] %}
 
-  {% for label, value, extra_class, key in stats %}
-  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-4">
-    <p class="text-xs text-zinc-400 uppercase tracking-wider mb-1">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</p>
-    <p class="text-xl font-mono font-semibold {{ extra_class }}">{{ value }}</p>
-  </div>
-  {% endfor %}
-</div>
+{{ stat_grid(stats, 'Risk Stats') }}
 
 <!-- Fundamentals panel -->
 {% if data.fundamentals %}
-<div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 mb-8">
-  <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Fundamentals &amp; Valuation</h2>
+{% call panel('Fundamentals & Valuation') %}
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
     {% set multiples = [
       ('Trailing P/E',   data.fundamentals.get('Trailing P/E'), 'trailing_pe'),
@@ -154,13 +147,12 @@
     </div>
   </div>
   {% endif %}
-</div>
+{% endcall %}
 {% endif %}
 
 <!-- Forecasts & Guidance panel -->
 {% if data.fundamentals and (data.fundamentals.get('Next Earnings') or data.fundamentals.get('PEG Ratio') or data.fundamentals.get('Earnings Growth') or data.fundamentals.get('Revenue Growth')) %}
-<div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 mb-8">
-  <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">Consensus Forecasts &amp; Guidance</h2>
+{% call panel('Consensus Forecasts & Guidance') %}
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3">
     
     {% if data.fundamentals.get('Next Earnings') %}
@@ -229,7 +221,7 @@
     {% endif %}
 
   </div>
-</div>
+{% endcall %}
 {% endif %}
 
 <!-- Charts grid -->
