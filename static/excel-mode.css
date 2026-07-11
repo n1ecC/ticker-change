@@ -58,8 +58,10 @@ html.excel .font-mono {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- Top nav -> Excel title bar (green chrome, white type) ---- */
-html.excel nav {
+/* ---- Top nav -> Excel title bar (green chrome, white type) ----
+   nav.bg-white needed so this outranks the generic .bg-white cell rule above. */
+html.excel nav,
+html.excel nav.bg-white {
   background-color: var(--xl-accent) !important;
   border-bottom: none !important;
 }
