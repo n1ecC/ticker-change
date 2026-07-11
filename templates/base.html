@@ -187,13 +187,19 @@
       .dark .text-zinc-500,
       .dark .text-zinc-600 { color: #ffffff !important; }
     </style>
+    <link rel="stylesheet" href="/static/excel-mode.css">
     <script>
-      // Initialize dark mode before page load to prevent flash. Default to dark.
-      if (localStorage.theme === 'dark' || !('theme' in localStorage)) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+      // Initialize theme before page load to prevent flash. Three states:
+      // 'light' | 'dark' | 'excel'. Default to dark. Excel is a light theme,
+      // so it never coexists with the dark class.
+      (function () {
+        var t = localStorage.theme;
+        if (t !== 'light' && t !== 'excel') t = 'dark';
+        document.documentElement.classList.toggle('dark', t === 'dark');
+        document.documentElement.classList.toggle('excel', t === 'excel');
+        // Mirror to a cookie so the server can render Excel-mode structure.
+        document.cookie = 'ui_mode=' + t + ';path=/;max-age=31536000';
+      })();
     </script>
     {% block head_extra %}{% endblock %}
   </head>
@@ -228,6 +234,9 @@
               </svg>
               <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path>
+              </svg>
+              <svg id="theme-toggle-excel-icon" class="hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 4.5h15v15h-15zM4.5 9.75h15M4.5 14.25h15M9.75 4.5v15M15 4.5v15"/>
               </svg>
             </button>
           </div>
@@ -281,32 +290,51 @@
     </footer>
 
     <script>
-      // Dark mode toggle functionality
-      const themeToggleBtn = document.getElementById('theme-toggle');
-      const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
-      const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+      // Theme toggle: cycles light -> dark -> excel -> light.
+      // The button shows the icon of the NEXT mode in the cycle.
+      (function () {
+        const btn = document.getElementById('theme-toggle');
+        const icons = {
+          light: document.getElementById('theme-toggle-light-icon'),
+          dark: document.getElementById('theme-toggle-dark-icon'),
+          excel: document.getElementById('theme-toggle-excel-icon'),
+        };
+        const ORDER = ['light', 'dark', 'excel'];
 
-      // Show the correct icon based on current theme. Default to dark.
-      if (localStorage.getItem('theme') === 'dark' || !('theme' in localStorage)) {
-        themeToggleLightIcon.classList.remove('hidden');
-      } else {
-        themeToggleDarkIcon.classList.remove('hidden');
-      }
-
-      themeToggleBtn.addEventListener('click', function() {
-        // Toggle icons
-        themeToggleDarkIcon.classList.toggle('hidden');
-        themeToggleLightIcon.classList.toggle('hidden');
-
-        // Toggle dark mode
-        if (document.documentElement.classList.contains('dark')) {
-          document.documentElement.classList.remove('dark');
-          localStorage.setItem('theme', 'light');
-        } else {
-          document.documentElement.classList.add('dark');
-          localStorage.setItem('theme', 'dark');
+        function currentTheme() {
+          const t = localStorage.getItem('theme');
+          return (t === 'light' || t === 'excel') ? t : 'dark';
         }
-      });
+
+        function nextTheme() {
+          return ORDER[(ORDER.indexOf(currentTheme()) + 1) % ORDER.length];
+        }
+
+        function showNextIcon() {
+          const next = nextTheme();
+          Object.values(icons).forEach(el => el.classList.add('hidden'));
+          icons[next].classList.remove('hidden');
+          btn.title = 'Switch to ' + next.charAt(0).toUpperCase() + next.slice(1) + ' mode';
+        }
+
+        showNextIcon();
+
+        btn.addEventListener('click', function () {
+          const from = currentTheme();
+          const to = nextTheme();
+          localStorage.setItem('theme', to);
+          document.cookie = 'ui_mode=' + to + ';path=/;max-age=31536000';
+
+          // Entering or leaving Excel mode reloads so server-rendered
+          // structure and charts pick up the mode; light<->dark stays live.
+          if (from === 'excel' || to === 'excel') {
+            window.location.reload();
+            return;
+          }
+          document.documentElement.classList.toggle('dark', to === 'dark');
+          showNextIcon();
+        });
+      })();
     </script>
     <script>
       // Persist the active ticker and configure sub-navbar

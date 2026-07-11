@@ -28,6 +28,13 @@ CORS(app)
 # the /glossary page share a single source of truth.
 app.jinja_env.globals['GLOSSARY'] = GLOSSARY
 
+
+@app.context_processor
+def inject_ui_mode():
+    """Excel mode flag, mirrored from localStorage into the ui_mode cookie by
+    base.html so structural rendering can differ server-side."""
+    return {'excel_mode': request.cookies.get('ui_mode') == 'excel'}
+
 with app.app_context():
     init_db()
 
@@ -3283,4 +3290,4 @@ def _warm_options_cache():
 
 if __name__ == '__main__':
     _warm_options_cache()
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=5001, threaded=True)

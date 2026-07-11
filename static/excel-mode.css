@@ -1,0 +1,107 @@
+/* Excel mode — global paint layer.
+   Active when <html> carries the "excel" class (set pre-paint in base.html).
+   Excel mode is a light theme: the toggle removes the "dark" class, so all
+   rules here only need to beat Tailwind's light-mode utilities.
+   See docs/EXCEL_MODE_ARCHITECTURE.md for the full design. */
+
+html.excel {
+  --xl-accent: #217346;      /* Excel brand green */
+  --xl-accent-deep: #185c37;
+  --xl-gridline: #cbd5e1;
+  --xl-header-fill: #f1f5f9;
+  --xl-cell-fill: #ffffff;
+  --xl-ink: #0f172a;
+  --xl-pos-green: #15803d;
+  --xl-neg-red: #b91c1c;
+}
+
+html.excel body {
+  background-color: #eef1f5 !important;
+  color: var(--xl-ink) !important;
+  font-family: Calibri, 'Segoe UI', Inter, system-ui, sans-serif !important;
+}
+
+/* ---- Flatten: spreadsheets have no rounded corners or shadows ---- */
+html.excel [class*="rounded"] { border-radius: 0 !important; }
+html.excel [class*="shadow"] { box-shadow: none !important; }
+
+/* Every border becomes a gridline */
+html.excel [class*="border"] { border-color: var(--xl-gridline) !important; }
+
+/* Card / panel surfaces -> white sheet cells on the gray desk */
+html.excel .bg-white,
+html.excel .bg-zinc-50,
+html.excel .bg-zinc-100 { background-color: var(--xl-cell-fill) !important; }
+
+/* ---- Amber brand accent -> Excel green ---- */
+html.excel .text-amber-400,
+html.excel .text-amber-500,
+html.excel .text-amber-600 { color: var(--xl-accent) !important; }
+html.excel .bg-amber-500 {
+  background-color: var(--xl-accent) !important;
+  color: #ffffff !important;
+}
+html.excel .bg-amber-500\/10 { background-color: #e8f2ec !important; }
+html.excel .bg-amber-50\/20 { background-color: #f4f9f6 !important; }
+html.excel .hover\:text-amber-600:hover,
+html.excel .hover\:text-amber-300:hover { color: var(--xl-accent-deep) !important; }
+
+/* Positive / negative values use workbook green & red */
+html.excel .text-emerald-400,
+html.excel .text-emerald-500 { color: var(--xl-pos-green) !important; }
+html.excel .text-rose-400,
+html.excel .text-rose-500 { color: var(--xl-neg-red) !important; }
+
+/* Numbers: classic spreadsheet mono with aligned digits */
+html.excel .font-mono {
+  font-family: ui-monospace, Consolas, 'SFMono-Regular', Menlo, monospace !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Top nav -> Excel title bar (green chrome, white type) ---- */
+html.excel nav {
+  background-color: var(--xl-accent) !important;
+  border-bottom: none !important;
+}
+html.excel nav a,
+html.excel nav a span,
+html.excel nav button { color: #ffffff !important; }
+html.excel nav .text-amber-500,
+html.excel nav .text-amber-400 { color: #ffffff !important; }
+html.excel nav [class*="text-zinc"] { color: #d7e8de !important; }
+html.excel nav a:hover,
+html.excel nav a:hover span,
+html.excel nav [class*="text-zinc"]:hover { color: #ffffff !important; }
+html.excel nav [class*="border"] { border-color: rgba(255, 255, 255, 0.35) !important; }
+
+/* ---- Ticker sub-nav -> workbook sheet-tab strip ---- */
+html.excel #ticker-sub-nav {
+  background-color: #dce3ea !important;
+  border-bottom: 1px solid var(--xl-gridline) !important;
+}
+html.excel #ticker-sub-nav a[id^="sub-link"] {
+  background-color: #eef1f5 !important;
+  border: 1px solid var(--xl-gridline) !important;
+  border-radius: 3px 3px 0 0 !important;
+  color: #334155 !important;
+}
+html.excel #ticker-sub-nav a[id^="sub-link"]:hover {
+  background-color: #ffffff !important;
+  color: var(--xl-ink) !important;
+}
+/* Active view = active sheet tab: white with the green top rule */
+html.excel #ticker-sub-nav a.bg-amber-500 {
+  background-color: #ffffff !important;
+  color: var(--xl-accent-deep) !important;
+  border-top: 3px solid var(--xl-accent) !important;
+  font-weight: 700;
+}
+/* The amber ticker pill reads as the Name Box */
+html.excel #ticker-sub-nav .bg-amber-500\/10 {
+  background-color: #ffffff !important;
+  border: 1px solid var(--xl-gridline) !important;
+}
+html.excel #sub-nav-ticker { color: var(--xl-accent-deep) !important; }
+
+/* Text selection matches the Excel selection tint */
+html.excel ::selection { background-color: #c6e0d4; }
