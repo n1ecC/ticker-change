@@ -25,6 +25,16 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
 
+      # --- S3 option-chain cache (values set in the Render dashboard) ---
+      - key: S3_CACHE_BUCKET
+        sync: false
+      - key: S3_CACHE_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
       # --- Runtime ---
       - key: PYTHON_VERSION
         value: 3.11.0
