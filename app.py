@@ -16,6 +16,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
 import db
+import s3_cache
 import providers
 import ml
 import ai
@@ -621,11 +622,124 @@ def get_fundamentals(ticker: str) -> dict | None:
         return None
 
 
+# --- Shared option-chain cache (S3 primary, SQLite api_cache fallback) ---
+# Chains are written to both stores and read S3-first: a configured
+# S3_CACHE_BUCKET survives restarts and is shared across instances, while the
+# local SQLite copy keeps a single-node deployment working with no AWS setup.
+# Stale entries are served when yfinance fails — stale-but-present beats a
+# blank options table after hours or under rate limiting.
+
+CHAIN_TTL_HOURS = 4
+_STALE_TTL_HOURS = 24 * 365  # "any age" TTL for last-resort SQLite reads
+
+
+def _chain_records(df) -> list:
+    """DataFrame -> JSON-safe records (Timestamps become ISO strings)."""
+    if df is None or df.empty:
+        return []
+    out = df.copy()
+    for col in out.columns:
+        if str(out[col].dtype).startswith('datetime'):
+            out[col] = out[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+    return out.to_dict('records')
+
+
+def _chain_from_payload(payload) -> tuple:
+    calls = pd.DataFrame(payload.get('calls', []))
+    puts = pd.DataFrame(payload.get('puts', []))
+    return calls, puts, payload.get('spot_price')
+
+
+def _spot_price(ticker: str, stock=None) -> float | None:
+    try:
+        hist = (stock or yf.Ticker(ticker)).history(period="1d")
+        if not hist.empty:
+            return float(hist['Close'].iloc[-1])
+    except Exception:
+        pass
+    df = get_or_fetch_prices(ticker)
+    if df is not None and not df.empty:
+        return float(df['close'].iloc[-1])
+    return None
+
+
+def get_cached_expirations(ticker: str, stock=None) -> list:
+    """Expiration dates for a ticker: fresh cache first, then live yfinance."""
+    ticker = ticker.upper()
+    stale = None
+    hit = s3_cache.get_json(f"{ticker}/meta.json")
+    if hit is not None:
+        payload, age = hit
+        if age <= CHAIN_TTL_HOURS and payload.get('expirations'):
+            return payload['expirations']
+        stale = payload
+    cached = db.cache_get("yfinance", f"optexp:{ticker}", CHAIN_TTL_HOURS)
+    if cached:
+        return cached
+
+    try:
+        expirations = list((stock or yf.Ticker(ticker)).options or [])
+    except Exception as e:
+        print(f"[chain-cache] expirations fetch failed for {ticker}: {e}")
+        expirations = []
+    if expirations:
+        s3_cache.put_json(f"{ticker}/meta.json", {'expirations': expirations})
+        db.cache_set("yfinance", f"optexp:{ticker}", expirations)
+        return expirations
+
+    if stale is not None and stale.get('expirations'):
+        return stale['expirations']
+    return db.cache_get("yfinance", f"optexp:{ticker}", _STALE_TTL_HOURS) or []
+
+
+def get_cached_chain(ticker: str, expiration: str, stock=None, spot_hint=None) -> tuple | None:
+    """One expiration's chain as (calls_df, puts_df, spot_price), read-through cached.
+
+    Read order: fresh S3 -> fresh SQLite -> live yfinance (written back to both
+    stores) -> stale S3 -> stale SQLite -> None.
+    """
+    ticker = ticker.upper()
+    s3_key = f"{ticker}/{expiration}.json"
+    sql_key = f"optchain:{ticker}:{expiration}"
+
+    stale = None
+    hit = s3_cache.get_json(s3_key)
+    if hit is not None:
+        payload, age = hit
+        if age <= CHAIN_TTL_HOURS:
+            return _chain_from_payload(payload)
+        stale = payload
+    cached = db.cache_get("yfinance", sql_key, CHAIN_TTL_HOURS)
+    if cached is not None:
+        return _chain_from_payload(cached)
+
+    try:
+        chain = (stock or yf.Ticker(ticker)).option_chain(expiration)
+        calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+        puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+        spot = spot_hint or _spot_price(ticker, stock)
+        payload = {
+            'calls': _chain_records(calls),
+            'puts': _chain_records(puts),
+            'spot_price': spot,
+        }
+        s3_cache.put_json(s3_key, payload)
+        db.cache_set("yfinance", sql_key, payload)
+        return calls, puts, spot
+    except Exception as e:
+        print(f"[chain-cache] live fetch failed for {ticker} {expiration}: {e}")
+
+    if stale is not None:
+        return _chain_from_payload(stale)
+    cached = db.cache_get("yfinance", sql_key, _STALE_TTL_HOURS)
+    return _chain_from_payload(cached) if cached is not None else None
+
+
 def get_options_smile(ticker: str, current_price: float) -> str | None:
-    """Build an IV smile chart from yfinance options data across 3-4 expirations."""
+    """Build an IV smile chart from cached option chains across 3-4 expirations."""
     try:
         stock = yf.Ticker(ticker.upper())
-        expirations = stock.options
+        expirations = get_cached_expirations(ticker, stock)
         if not expirations:
             return None
 
@@ -635,8 +749,10 @@ def get_options_smile(ticker: str, current_price: float) -> str | None:
         fig = go.Figure()
         plotted = 0
         for exp in selected:
-            chain = stock.option_chain(exp)
-            calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
+            cached = get_cached_chain(ticker, exp, stock=stock, spot_hint=current_price)
+            if cached is None:
+                continue
+            calls, _, _ = cached
             if calls.empty or 'impliedVolatility' not in calls.columns:
                 continue
             calls = calls[
@@ -693,7 +809,7 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
     """
     try:
         stock = yf.Ticker(ticker.upper())
-        expirations = stock.options
+        expirations = get_cached_expirations(ticker, stock)
         if not expirations or not current_price:
             return None
 
@@ -715,10 +831,11 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
         if not selected:
             return None
 
-        # Independent network calls — fetch the chains concurrently.
+        # Independent lookups (S3/SQLite hit or live fetch) — run them concurrently.
         def _fetch(exp_tuple):
             try:
-                return exp_tuple, stock.option_chain(exp_tuple[0])
+                return exp_tuple, get_cached_chain(
+                    ticker, exp_tuple[0], stock=stock, spot_hint=current_price)
             except Exception:
                 return exp_tuple, None
 
@@ -731,9 +848,9 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
         for (exp, exp_dt, dte), chain in fetched:
             if chain is None:
                 continue
+            calls_df, puts_df, _ = chain
             t_years = max(1e-5, (dte + 1) / 365.0)
-            for df_side, side in ((getattr(chain, 'calls', None), 'call'),
-                                  (getattr(chain, 'puts', None), 'put')):
+            for df_side, side in ((calls_df, 'call'), (puts_df, 'put')):
                 if df_side is None or df_side.empty:
                     continue
                 for _, row in df_side.iterrows():
@@ -1961,66 +2078,29 @@ def calculate_greeks(s, k, t, v, r=0.045):
 def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
     """Retrieve option chain and compute Black-Scholes Greeks for strikes around the spot price.
 
-    Uses the SQLite api_cache to persist the raw option chain (calls/puts
-    DataFrames + spot price) so the app still works after hours or when
-    yfinance is rate-limited. The cache TTL is 1 hour during market hours
-    and 12 hours overnight/weekends — stale-but-present beats a blank table.
+    Persists the raw option chain (calls/puts records + spot price) through the
+    shared chain cache — S3 when S3_CACHE_BUCKET is configured, SQLite api_cache
+    otherwise — so the app still works after hours or when yfinance is
+    rate-limited. Stale-but-present beats a blank table.
     """
-    from db import cache_get, cache_set
-
     try:
         stock = yf.Ticker(ticker.upper())
-        expirations = stock.options
+        expirations = get_cached_expirations(ticker, stock)
         if not expirations:
             return None
 
         if not expiration_date or expiration_date not in expirations:
             expiration_date = expirations[0]
 
-        # --- Cache the raw chain so after-hours / rate-limited requests still work ---
-        cache_key = f"optchain:{ticker.upper()}:{expiration_date}"
-        cached = cache_get("yfinance", cache_key, ttl_hours=4)
+        cached = get_cached_chain(ticker, expiration_date, stock=stock)
+        if cached is None:
+            return None
+        calls, puts, spot_price = cached
+        if not spot_price:
+            spot_price = _spot_price(ticker.upper(), stock)
+        if not spot_price:
+            return None
 
-        if cached is not None:
-            calls = pd.DataFrame(cached.get('calls', []))
-            puts = pd.DataFrame(cached.get('puts', []))
-            spot_price = cached.get('spot_price')
-        else:
-            chain = stock.option_chain(expiration_date)
-            calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
-            puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
-
-            # Determine spot price
-            hist = stock.history(period="1d")
-            if hist.empty:
-                df = get_or_fetch_prices(ticker)
-                if df is not None and not df.empty:
-                    spot_price = float(df['close'].iloc[-1])
-                else:
-                    spot_price = None
-            else:
-                spot_price = float(hist['Close'].iloc[-1])
-
-            if not spot_price:
-                return None
-
-            # Serialize for cache — convert Timestamps to ISO strings so
-            # json.dumps (inside cache_set) doesn't choke on numpy/pandas types.
-            def _chain_records(df):
-                if df.empty:
-                    return []
-                out = df.copy()
-                for col in out.columns:
-                    if str(out[col].dtype).startswith('datetime'):
-                        out[col] = out[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
-                return out.to_dict('records')
-
-            cache_set("yfinance", cache_key, {
-                'calls': _chain_records(calls),
-                'puts': _chain_records(puts),
-                'spot_price': spot_price,
-            })
-            
         exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
         today = datetime.now()
         days_to_exp = (exp_dt - today).days + 1
@@ -3253,12 +3333,15 @@ def raw_sec_filings_api(ticker):
 
 
 # --- Automatic EOD options chain cache warmer ---
-# Pre-warms the options cache for tickers stored in the DB so the options
-# tab loads instantly and works after hours / during rate-limiting. Runs in a
-# background thread on startup and every 4 hours afterward.
+# Pre-warms the chain cache (S3 when configured, plus local SQLite) for every
+# ticker stored in the DB across ALL of its expirations, so the options tab,
+# GEX profile and IV smile load instantly and keep working after hours or
+# during rate-limiting. Runs in a background thread on startup and every
+# 4 hours afterward. get_cached_chain is read-through, so expirations that are
+# already fresh in the cache cost no network call.
 
 def _warm_options_cache():
-    """Fetch and cache option chains for all tickers in the DB, in the background."""
+    """Fetch and cache option chains for all tickers and expirations, in the background."""
     def _worker():
         try:
             with db.get_conn() as conn:
@@ -3266,13 +3349,19 @@ def _warm_options_cache():
             symbols = [r["symbol"] for r in rows]
             if not symbols:
                 return
-            print(f"[options-cache] warming {len(symbols)} tickers...")
+            store = f"s3://{s3_cache.bucket()}" if s3_cache.enabled() else "sqlite"
+            print(f"[options-cache] warming {len(symbols)} tickers -> {store}...")
+            chains = 0
             for sym in symbols:
                 try:
-                    get_options_greeks_data(sym)
+                    stock = yf.Ticker(sym)
+                    for exp in get_cached_expirations(sym, stock):
+                        if get_cached_chain(sym, exp, stock=stock) is not None:
+                            chains += 1
+                        time.sleep(0.15)  # stay gentle on yfinance rate limits
                 except Exception as e:
                     print(f"[options-cache] {sym} failed: {e}")
-            print(f"[options-cache] done ({len(symbols)} tickers)")
+            print(f"[options-cache] done ({len(symbols)} tickers, {chains} chains)")
         except Exception as e:
             print(f"[options-cache] warmer error: {e}")
 

@@ -184,6 +184,13 @@ sub-views:
   when older than 1h); provider and AI responses are cached in `api_cache`
   (24h / 12h TTLs respectively) to respect tight free tiers. A short in-process
   memo also collapses duplicate look-ups within a single request.
+- **S3 option-chain cache.** When `S3_CACHE_BUCKET` is set, raw option chains
+  for **every expiration** (plus the expiration list and spot price) are written
+  to and read from S3 (4h TTL, one JSON object per ticker/expiration), so the
+  cache survives redeploys and is shared across instances; a background warmer
+  refreshes all chains on startup and every 4 hours. Without a bucket the same
+  layer falls back to the local SQLite `api_cache`. S3-compatible stores
+  (Cloudflare R2, MinIO) work via `S3_CACHE_ENDPOINT_URL` — see `.env.example`.
 - **Resilient fetching.** yfinance calls retry with exponential backoff;
   provider calls go through a shared session that auto-retries on 429/5xx. If a
   refresh fails but older cached rows exist, the app serves the stale data

@@ -12,3 +12,4 @@ anthropic
 markdown
 scikit-learn
 lightgbm
+boto3
