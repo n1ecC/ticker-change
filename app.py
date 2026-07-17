@@ -24,6 +24,44 @@ import ml
 import ai
 from glossary import GLOSSARY
 
+# --- yfinance custom session with browser headers to prevent Cloud IP blocking ---
+_YF_SESSION = None
+_YF_SESSION_LOCK = threading.Lock()
+
+def _get_yf_session():
+    global _YF_SESSION
+    if _YF_SESSION is not None:
+        return _YF_SESSION
+    with _YF_SESSION_LOCK:
+        if _YF_SESSION is not None:
+            return _YF_SESSION
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util import Retry
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://finance.yahoo.com",
+            "Referer": "https://finance.yahoo.com",
+        })
+        retries = Retry(
+            total=3,
+            backoff_factor=0.6,
+            status_forcelist=[429, 500, 502, 503, 504],
+            raise_on_status=False
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        _YF_SESSION = session
+    return _YF_SESSION
+
+def _get_yf_ticker(symbol: str) -> yf.Ticker:
+    """Return a yfinance Ticker instance configured with a custom, browser-like requests session."""
+    return yf.Ticker(symbol.upper(), session=_get_yf_session())
+
 app = Flask(__name__)
 CORS(app)
 
@@ -73,7 +111,7 @@ def _fetch_yfinance_with_retry(symbol: str, period: str, retries: int = 3):
     delay = 0.6
     for attempt in range(retries):
         try:
-            df = yf.Ticker(symbol).history(period=period, auto_adjust=True)
+            df = _get_yf_ticker(symbol).history(period=period, auto_adjust=True)
             if not df.empty:
                 return df
             print(f"yfinance empty for {symbol} (attempt {attempt + 1}/{retries})")
@@ -152,7 +190,7 @@ def get_current_price_yfinance(ticker, retries=3):
     """Get current price using yfinance with retry logic"""
     for attempt in range(retries):
         try:
-            stock = yf.Ticker(ticker.upper())
+            stock = _get_yf_ticker(ticker)
             # Use shorter period for faster response, retry with longer if needed
             hist = stock.history(period="1d")
             
@@ -180,7 +218,7 @@ def get_historical_price_yfinance(ticker, target_date, retries=2):
     """Get historical price using yfinance with fixed datetime handling and retry logic"""
     for attempt in range(retries):
         try:
-            stock = yf.Ticker(ticker.upper())
+            stock = _get_yf_ticker(ticker)
             
             # Determine appropriate period based on target date
             days_diff = (datetime.now() - target_date).days
@@ -583,7 +621,7 @@ def stock_page():
 def get_fundamentals(ticker: str) -> dict | None:
     """Fetch key valuation multiples, short interest, consensus forecasts, and upcoming events from yfinance."""
     try:
-        t = yf.Ticker(ticker.upper())
+        t = _get_yf_ticker(ticker)
         info = t.info or {}
         
         # Extract upcoming earnings dates and consensus forecasts if available
@@ -667,7 +705,7 @@ def _chain_from_payload(payload) -> tuple:
 
 def _spot_price(ticker: str, stock=None) -> float | None:
     try:
-        hist = (stock or yf.Ticker(ticker)).history(period="1d")
+        hist = (stock or _get_yf_ticker(ticker)).history(period="1d")
         if not hist.empty:
             return float(hist['Close'].iloc[-1])
     except Exception:
@@ -701,7 +739,7 @@ def get_cached_expirations(ticker: str, stock=None, force: bool = False) -> list
                 return expirations
 
     try:
-        expirations = list((stock or yf.Ticker(ticker)).options or [])
+        expirations = list((stock or _get_yf_ticker(ticker)).options or [])
     except Exception as e:
         print(f"[chain-cache] expirations fetch failed for {ticker}: {type(e).__name__}: {e}")
         expirations = []
@@ -743,7 +781,7 @@ def get_cached_chain(ticker: str, expiration: str, stock=None, spot_hint=None, f
             return _chain_from_payload(cached)
 
     try:
-        chain = (stock or yf.Ticker(ticker)).option_chain(expiration)
+        chain = (stock or _get_yf_ticker(ticker)).option_chain(expiration)
         calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
         puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
         if calls.empty and puts.empty:
@@ -769,7 +807,7 @@ def get_cached_chain(ticker: str, expiration: str, stock=None, spot_hint=None, f
 def get_options_smile(ticker: str, current_price: float) -> str | None:
     """Build an IV smile chart from cached option chains across 3-4 expirations."""
     try:
-        stock = yf.Ticker(ticker.upper())
+        stock = _get_yf_ticker(ticker)
         expirations = get_cached_expirations(ticker, stock)
         if not expirations:
             return None
@@ -839,7 +877,7 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
     assumptions) — directional, not an institutional low-latency feed.
     """
     try:
-        stock = yf.Ticker(ticker.upper())
+        stock = _get_yf_ticker(ticker)
         expirations = get_cached_expirations(ticker, stock)
         if not expirations or not current_price:
             return None
@@ -1236,7 +1274,7 @@ def _normalize_insider_df(raw):
 def get_insider_summary(ticker: str) -> dict | None:
     """Recent insider transactions + aggregate stats for the analytics card."""
     try:
-        raw = yf.Ticker(ticker.upper()).insider_transactions
+        raw = _get_yf_ticker(ticker).insider_transactions
         idf, err = _normalize_insider_df(raw)
         if idf is None:
             return None
@@ -1277,7 +1315,7 @@ def get_insider_summary(ticker: str) -> dict | None:
 def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
     """Dual-axis chart: net monthly insider share activity vs. stock price."""
     try:
-        raw = yf.Ticker(ticker.upper()).insider_transactions
+        raw = _get_yf_ticker(ticker).insider_transactions
         idf, err = _normalize_insider_df(raw)
         if idf is None:
             return None
@@ -2147,7 +2185,7 @@ def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
     rate-limited. Stale-but-present beats a blank table.
     """
     try:
-        stock = yf.Ticker(ticker.upper())
+        stock = _get_yf_ticker(ticker)
         expirations = get_cached_expirations(ticker, stock)
         if not expirations:
             return None
@@ -3430,7 +3468,7 @@ def _warm_options_cache(force=False):
             chains = 0
             for sym in symbols:
                 try:
-                    stock = yf.Ticker(sym)
+                    stock = _get_yf_ticker(sym)
                     for exp in get_cached_expirations(sym, stock, force=force):
                         if get_cached_chain(sym, exp, stock=stock, force=force) is not None:
                             chains += 1
