@@ -1,25 +1,37 @@
-name: EOD options cache warm
+name: Options Cache Warm and Sync
 
 on:
   schedule:
-    # 21:15 UTC lands after the 4:00 PM ET close year-round:
-    # 5:15 PM ET during EDT, 4:15 PM ET during EST. (GitHub cron is UTC-only
-    # and can't track US DST; the close is 20:00 UTC in summer, 21:00 in winter.)
-    - cron: '15 21 * * 1-5'
+    # Run hourly on weekdays during US market hours (14:15 to 22:15 UTC covers 9:15 AM to 6:15 PM ET)
+    # Plus a final EOD run at 22:15 UTC (6:15 PM ET) to capture the final post-market closing options chain.
+    - cron: '15 14-22 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  warm:
+  warm-s3:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping /api/warm-cache
-        # Generous timeout + retries: a spun-down free-tier Render instance
-        # takes ~1 min to cold-start before it can accept the request.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          curl -sS -X POST --fail \
-            --max-time 180 --retry 3 --retry-delay 30 --retry-all-errors \
-            -H "Authorization: Bearer $WARM_CACHE_TOKEN" \
-            "$APP_URL/api/warm-cache"
+          pip install --upgrade pip
+          pip install requests yfinance boto3 pandas
+
+      - name: Run S3 Cache Warmer
+        run: python warm_s3_cache.py
         env:
-          WARM_CACHE_TOKEN: ${{ secrets.WARM_CACHE_TOKEN }}
+          S3_CACHE_BUCKET: ${{ secrets.S3_CACHE_BUCKET }}
+          S3_CACHE_PREFIX: ${{ secrets.S3_CACHE_PREFIX }}
+          S3_CACHE_REGION: ${{ secrets.S3_CACHE_REGION }}
+          S3_CACHE_ENDPOINT_URL: ${{ secrets.S3_CACHE_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           APP_URL: ${{ secrets.RENDER_APP_URL }}
+          WARM_CACHE_TOKEN: ${{ secrets.WARM_CACHE_TOKEN }}

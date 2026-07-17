@@ -3514,6 +3514,26 @@ def api_warm_cache():
     return jsonify({"status": "accepted", "detail": "EOD options cache warm started in background"}), 202
 
 
+@app.route('/api/active-tickers')
+def api_active_tickers():
+    """Serve a list of all active tickers currently tracked in the database daily_prices."""
+    expected = os.environ.get('WARM_CACHE_TOKEN', '')
+    if expected:
+        provided = request.headers.get('Authorization', '')
+        provided = provided[7:] if provided.startswith('Bearer ') else request.args.get('token', '')
+        if not hmac.compare_digest(provided, expected):
+            return jsonify({"error": "unauthorized"}), 403
+
+    try:
+        with db.get_conn() as conn:
+            rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
+        symbols = [r["symbol"] for r in rows]
+        return jsonify(symbols)
+    except Exception as e:
+        print(f"Error serving active tickers: {e}")
+        return jsonify([]), 500
+
+
 # Import-time start: gunicorn imports app:app and never runs __main__, so
 # this is what activates the warmer in production (each worker starts the
 # threads; the api_cache lock makes only one actually fetch).
