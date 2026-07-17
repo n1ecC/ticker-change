@@ -113,6 +113,40 @@ def cache_set(provider: str, key: str, payload):
         )
 
 
+def try_claim_lock(name: str, ttl_hours: float) -> bool:
+    """Atomically claim a cross-process lock row in api_cache.
+
+    Returns True if this process won the claim. A lock older than ttl_hours
+    is expired and can be re-claimed. INSERT OR IGNORE handles the
+    first-ever claim; re-claims use an UPDATE keyed on the previous
+    timestamp so two gunicorn workers racing for an expired lock can't
+    both win (only one UPDATE matches the old value).
+    """
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO api_cache (provider, key, fetched_at, payload) "
+            "VALUES ('internal', ?, ?, '{}')",
+            (name, now),
+        )
+        if cur.rowcount == 1:
+            return True
+        row = conn.execute(
+            "SELECT fetched_at FROM api_cache WHERE provider = 'internal' AND key = ?",
+            (name,),
+        ).fetchone()
+        if row is None:
+            return False
+        if datetime.utcnow() - datetime.fromisoformat(row["fetched_at"]) < timedelta(hours=ttl_hours):
+            return False
+        cur = conn.execute(
+            "UPDATE api_cache SET fetched_at = ? "
+            "WHERE provider = 'internal' AND key = ? AND fetched_at = ?",
+            (now, name, row["fetched_at"]),
+        )
+        return cur.rowcount == 1
+
+
 def is_fresh(symbol: str) -> bool:
     with get_conn() as conn:
         row = conn.execute(

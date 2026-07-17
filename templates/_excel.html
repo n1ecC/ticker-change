@@ -1,0 +1,72 @@
+{# Excel-mode structural macros. Import WITH CONTEXT so `excel_mode`
+   (context processor in app.py) and GLOSSARY are visible:
+       {% from "_excel.html" import panel, stat_grid with context %}
+   Each macro renders the existing card markup in light/dark mode and true
+   spreadsheet structure (row numbers, column letters, gridlines) in Excel
+   mode. Paint lives in static/excel-mode.css.
+   See docs/EXCEL_MODE_ARCHITECTURE.md. #}
+{% from "_macros.html" import metric %}
+
+{# Titled panel. Card mode: the standard rounded-xl panel with uppercase h2.
+   Excel mode: a sheet with a title bar; CSS re-grids the inner label/value
+   pairs into bordered cells. #}
+{% macro panel(title) %}
+{% if excel_mode %}
+<div class="xl-sheet mb-8">
+  <div class="xl-titlebar"><span>{{ title }}</span><span class="xl-titlebar-tag">Sheet</span></div>
+  <div class="xl-sheet-body">{{ caller() }}</div>
+</div>
+{% else %}
+<div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 mb-8">
+  <h2 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-4">{{ title }}</h2>
+  {{ caller() }}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# Grid of stat metrics. `stats` is a list of (label, value, extra_class, key)
+   tuples — the shape analytics.html already builds. Card mode: the existing
+   responsive stat-card grid. Excel mode: a sheet table, two metrics per row,
+   with A-D column letters, numbered rows, and accounting-style negatives. #}
+{% macro stat_grid(stats, title='Stats') %}
+{% if excel_mode %}
+<div class="xl-sheet mb-6">
+  <div class="xl-titlebar"><span>{{ title }}</span><span class="xl-titlebar-tag">Sheet</span></div>
+  <table class="xl-grid">
+    <thead>
+      <tr>
+        <th class="xl-corner"></th>
+        {% for letter in ['A', 'B', 'C', 'D'] %}<th class="xl-colhead">{{ letter }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in stats|batch(2) %}
+      <tr>
+        <th class="xl-rowno">{{ loop.index }}</th>
+        {% for label, value, extra_class, key in row %}
+        {% set s = value ~ '' %}
+        {% set vcls = 'xl-neg' if s[:1] == '-'
+                 else 'xl-pos' if s[:1] == '+' or 'emerald' in extra_class
+                 else 'xl-warn' if 'amber' in extra_class
+                 else 'xl-muted' if 'zinc' in extra_class
+                 else '' %}
+        <td class="xl-label">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</td>
+        <td class="xl-val {{ vcls }}">{{ s | xlfmt }}</td>
+        {% endfor %}
+        {% if row|length == 1 %}<td class="xl-label"></td><td class="xl-val"></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  {% for label, value, extra_class, key in stats %}
+  <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-4">
+    <p class="text-xs text-zinc-400 uppercase tracking-wider mb-1">{% if key %}{{ metric(label, key) }}{% else %}{{ label }}{% endif %}</p>
+    <p class="text-xl font-mono font-semibold {{ extra_class }}">{{ value }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

@@ -38,3 +38,9 @@ services:
       # --- Runtime ---
       - key: PYTHON_VERSION
         value: 3.11.0
+
+      # Shared secret for POST /api/warm-cache (EOD options cache warm,
+      # called by the scheduled GitHub Action). Set the same value in the
+      # repo's WARM_CACHE_TOKEN Actions secret.
+      - key: WARM_CACHE_TOKEN
+        sync: false
