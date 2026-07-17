@@ -679,7 +679,8 @@ def get_cached_expirations(ticker: str, stock=None, force: bool = False) -> list
     """Expiration dates for a ticker: fresh cache first, then live yfinance."""
     ticker = ticker.upper()
     stale = None
-    today_str = datetime.now().strftime('%Y-%m-%d')
+    from zoneinfo import ZoneInfo
+    today_str = datetime.now(ZoneInfo("America/New_York")).strftime('%Y-%m-%d')
 
     if not force:
         hit = s3_cache.get_json(f"{ticker}/meta.json")
@@ -742,6 +743,8 @@ def get_cached_chain(ticker: str, expiration: str, stock=None, spot_hint=None, f
         chain = (stock or yf.Ticker(ticker)).option_chain(expiration)
         calls = chain.calls.copy() if hasattr(chain, 'calls') else pd.DataFrame()
         puts = chain.puts.copy() if hasattr(chain, 'puts') else pd.DataFrame()
+        if calls.empty and puts.empty:
+            raise ValueError("retrieved option chain is empty")
         spot = spot_hint or _spot_price(ticker, stock)
         payload = {
             'calls': _chain_records(calls),
@@ -2158,7 +2161,8 @@ def get_options_greeks_data(ticker, expiration_date=None, rf_rate=0.045):
         if not spot_price:
             return None
         exp_dt = datetime.strptime(expiration_date, '%Y-%m-%d')
-        today = datetime.now()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("America/New_York")).replace(tzinfo=None)
         days_to_exp = (exp_dt - today).days + 1
         t_years = max(1e-5, days_to_exp / 365.0)
         
