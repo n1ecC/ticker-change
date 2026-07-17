@@ -13,6 +13,8 @@ from plotly.subplots import make_subplots
 import time
 import threading
 import math
+import os
+import hmac
 from concurrent.futures import ThreadPoolExecutor
 from db import init_db, is_fresh, get_prices, store_prices
 import db
@@ -726,7 +728,7 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
             fetched = list(pool.map(_fetch, selected))
 
         lo, hi = current_price * 0.80, current_price * 1.20
-        agg: dict = {}  # strike -> {'call': gex, 'put': gex}
+        options_data = []
 
         for (exp, exp_dt, dte), chain in fetched:
             if chain is None:
@@ -747,13 +749,21 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
                     oi, iv = float(oi), float(iv)
                     if oi <= 0 or iv <= 0.01:
                         continue
-                    greeks = calculate_greeks(current_price, k, t_years, iv, rf_rate)
-                    if not greeks:
-                        continue
-                    # Dollar gamma per 1% move, scaled to millions of $.
-                    gex = greeks['gamma'] * oi * 100 * current_price ** 2 * 0.01 / 1e6
-                    bucket = agg.setdefault(k, {'call': 0.0, 'put': 0.0})
-                    bucket[side] += gex
+                    options_data.append((k, t_years, side, oi, iv))
+
+        if not options_data:
+            return None
+
+        agg: dict = {}  # strike -> {'call': gex, 'put': gex}
+        for k, t_years, side, oi, iv in options_data:
+            greeks = calculate_greeks(current_price, k, t_years, iv, rf_rate)
+            if not greeks:
+                continue
+            # Dollar gamma per 1% move, scaled to millions of $.
+            gex = greeks['gamma'] * oi * 100 * (current_price ** 2) * 0.01 / 1e6
+            bucket = agg.setdefault(k, {'call': 0.0, 'put': 0.0})
+            bucket[side] += gex
+
         if not agg:
             return None
 
@@ -775,9 +785,7 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
         bin_put  = [-bin_agg[k]['put'] for k in bin_strikes]
         bin_net  = [c + p for c, p in zip(bin_call, bin_put)]
 
-        # Cumulative net GEX from the lowest strike up. Its zero crossing is the
-        # gamma flip; its slope at a strike is the local gamma density (steep =
-        # concentrated/pinning, flat = thin/air-pocket).
+        # Cumulative net GEX from the lowest strike up.
         cum     = list(np.cumsum(net_gex))
         bin_cum = list(np.cumsum(bin_net))
 
@@ -795,15 +803,41 @@ def get_gex_profile(ticker: str, current_price: float, rf_rate: float = 0.045) -
         call_wall = _wall(call_gex, want_above=True,  pick=max)
         put_wall  = _wall(put_gex,  want_above=False, pick=min)
 
-        # Gamma flip: strike where cumulative net GEX crosses zero (linear-
-        # interpolated). Below it dealers are net-short gamma (trend-amplifying);
-        # above it net-long gamma (mean-reverting / vol-dampening).
+        # Gamma flip: spot price where total net GEX crosses zero.
+        # Below it dealers are net-short gamma (vol-expanding);
+        # above it net-long gamma (vol-dampening).
+        def calc_total_gex(s):
+            total = 0.0
+            for k, t_years, side, oi, iv in options_data:
+                if s <= 0.01:
+                    continue
+                try:
+                    d1 = (math.log(s / k) + (rf_rate + 0.5 * iv * iv) * t_years) / (iv * math.sqrt(t_years))
+                    pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+                    gamma = pdf_d1 / (s * iv * math.sqrt(t_years))
+                    sign = 1.0 if side == 'call' else -1.0
+                    gex = sign * gamma * oi * 100 * (s ** 2) * 0.01 / 1e6
+                    total += gex
+                except Exception:
+                    continue
+            return total
+
         gamma_flip = None
-        for i in range(1, len(cum)):
-            if (cum[i - 1] <= 0 < cum[i]) or (cum[i - 1] >= 0 > cum[i]):
-                x0, x1, y0, y1 = strikes[i - 1], strikes[i], cum[i - 1], cum[i]
-                gamma_flip = round(float(x0 + (x1 - x0) * (-y0) / (y1 - y0)), 2) if y1 != y0 else float(x1)
-                break
+        if strikes:
+            y_lo, y_hi = strikes[0], strikes[-1]
+            grid_spots = np.linspace(y_lo, y_hi, 100)
+            grid_gex = [calc_total_gex(s) for s in grid_spots]
+            
+            crossings = []
+            for i in range(1, len(grid_gex)):
+                if (grid_gex[i - 1] <= 0 < grid_gex[i]) or (grid_gex[i - 1] >= 0 > grid_gex[i]):
+                    s0, s1 = grid_spots[i - 1], grid_spots[i]
+                    y0, y1 = grid_gex[i - 1], grid_gex[i]
+                    val = float(s0 + (s1 - s0) * (-y0) / (y1 - y0)) if y1 != y0 else float(s1)
+                    crossings.append(val)
+            
+            if crossings:
+                gamma_flip = round(min(crossings, key=lambda c: abs(c - current_price)), 2)
 
         total_gex = float(np.sum(net_gex))
 
@@ -1944,14 +1978,14 @@ def calculate_greeks(s, k, t, v, r=0.045):
         vega = (s * math.sqrt(t) * pdf_d1) / 100.0
         
         return {
-            'call_delta': round(call_delta, 4),
-            'call_theta': round(call_theta, 4),
-            'call_rho': round(call_rho, 4),
-            'put_delta': round(put_delta, 4),
-            'put_theta': round(put_theta, 4),
-            'put_rho': round(put_rho, 4),
-            'gamma': round(gamma, 4),
-            'vega': round(vega, 4),
+            'call_delta': call_delta,
+            'call_theta': call_theta,
+            'call_rho': call_rho,
+            'put_delta': put_delta,
+            'put_theta': put_theta,
+            'put_rho': put_rho,
+            'gamma': gamma,
+            'vega': vega,
         }
     except Exception as e:
         print(f"Error calculating greeks: {e}")
@@ -3254,19 +3288,35 @@ def raw_sec_filings_api(ticker):
 
 # --- Automatic EOD options chain cache warmer ---
 # Pre-warms the options cache for tickers stored in the DB so the options
-# tab loads instantly and works after hours / during rate-limiting. Runs in a
-# background thread on startup and every 4 hours afterward.
+# tab loads instantly and works after hours / during rate-limiting. Started
+# at import time (below) so it also runs under gunicorn on Render, then
+# re-warms every 4 hours. A cross-process lock in api_cache ensures only one
+# gunicorn worker does the fetching each cycle.
 
-def _warm_options_cache():
-    """Fetch and cache option chains for all tickers in the DB, in the background."""
+def _warm_options_cache(force=False):
+    """Fetch and cache option chains for all tickers in the DB, in the background.
+
+    force=True (the EOD /api/warm-cache endpoint) clears cached chains first
+    so the re-fetch captures the closing snapshot instead of re-serving a
+    still-fresh mid-session cache. Even forced runs claim a short lock so
+    scheduler retries can't stampede.
+    """
     def _worker():
         try:
+            lock_ttl = 0.15 if force else 3.5  # hours; short TTL just dedupes retries
+            if not db.try_claim_lock("options_warmer_lock", ttl_hours=lock_ttl):
+                return
             with db.get_conn() as conn:
                 rows = conn.execute("SELECT DISTINCT symbol FROM daily_prices").fetchall()
             symbols = [r["symbol"] for r in rows]
             if not symbols:
                 return
-            print(f"[options-cache] warming {len(symbols)} tickers...")
+            if force:
+                with db.get_conn() as conn:
+                    conn.execute(
+                        "DELETE FROM api_cache WHERE provider = 'yfinance' AND key LIKE 'optchain:%'"
+                    )
+            print(f"[options-cache] warming {len(symbols)} tickers{' (forced EOD refresh)' if force else ''}...")
             for sym in symbols:
                 try:
                     get_options_greeks_data(sym)
@@ -3276,10 +3326,15 @@ def _warm_options_cache():
         except Exception as e:
             print(f"[options-cache] warmer error: {e}")
 
-    thread = threading.Thread(target=_worker, daemon=True, name="options-cache-warmer")
-    thread.start()
+    threading.Thread(target=_worker, daemon=True, name="options-cache-warmer").start()
 
-    # Re-warm every 4 hours so the cache stays fresh during long-running sessions
+
+def _start_options_cache_warmer():
+    """Warm once now, then re-warm every 4 hours. Called once at import time —
+    _warm_options_cache itself must not spawn the recurring thread, or every
+    cycle (and every /api/warm-cache call) would leak a new scheduler."""
+    _warm_options_cache()
+
     def _recurring():
         while True:
             time.sleep(4 * 3600)
@@ -3288,6 +3343,29 @@ def _warm_options_cache():
     threading.Thread(target=_recurring, daemon=True, name="options-cache-recurring").start()
 
 
+@app.route('/api/warm-cache', methods=['POST'])
+def api_warm_cache():
+    """Trigger a forced EOD options-chain warm (see .github/workflows/warm-cache.yml).
+
+    Requires WARM_CACHE_TOKEN in the environment, supplied by the caller as
+    an Authorization: Bearer header (or ?token= fallback).
+    """
+    expected = os.environ.get('WARM_CACHE_TOKEN', '')
+    if not expected:
+        return jsonify({"error": "WARM_CACHE_TOKEN is not configured on the server"}), 503
+    provided = request.headers.get('Authorization', '')
+    provided = provided[7:] if provided.startswith('Bearer ') else request.args.get('token', '')
+    if not hmac.compare_digest(provided, expected):
+        return jsonify({"error": "unauthorized"}), 403
+    _warm_options_cache(force=True)
+    return jsonify({"status": "accepted", "detail": "EOD options cache warm started in background"}), 202
+
+
+# Import-time start: gunicorn imports app:app and never runs __main__, so
+# this is what activates the warmer in production (each worker starts the
+# threads; the api_cache lock makes only one actually fetch).
+_start_options_cache_warmer()
+
+
 if __name__ == '__main__':
-    _warm_options_cache()
     app.run(debug=True, host='0.0.0.0', port=5001, threaded=True)

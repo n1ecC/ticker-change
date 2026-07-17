@@ -1,0 +1,25 @@
+name: EOD options cache warm
+
+on:
+  schedule:
+    # 21:15 UTC lands after the 4:00 PM ET close year-round:
+    # 5:15 PM ET during EDT, 4:15 PM ET during EST. (GitHub cron is UTC-only
+    # and can't track US DST; the close is 20:00 UTC in summer, 21:00 in winter.)
+    - cron: '15 21 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/warm-cache
+        # Generous timeout + retries: a spun-down free-tier Render instance
+        # takes ~1 min to cold-start before it can accept the request.
+        run: |
+          curl -sS -X POST --fail \
+            --max-time 180 --retry 3 --retry-delay 30 --retry-all-errors \
+            -H "Authorization: Bearer $WARM_CACHE_TOKEN" \
+            "$APP_URL/api/warm-cache"
+        env:
+          WARM_CACHE_TOKEN: ${{ secrets.WARM_CACHE_TOKEN }}
+          APP_URL: ${{ secrets.RENDER_APP_URL }}

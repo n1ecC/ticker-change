@@ -107,3 +107,14 @@ html.excel #sub-nav-ticker { color: var(--xl-accent-deep) !important; }
 
 /* Text selection matches the Excel selection tint */
 html.excel ::selection { background-color: #c6e0d4; }
+
+/* Disable animated border trail in Excel mode to keep sheets flat */
+html.excel .animated-border-trail {
+  animation: none !important;
+  background-image: none !important;
+  padding: 0 !important;
+  border: 1px solid var(--xl-gridline) !important;
+}
+html.excel .animated-border-trail > * {
+  border-radius: 0 !important;
+}

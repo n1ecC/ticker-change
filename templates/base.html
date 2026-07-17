@@ -145,21 +145,22 @@
         z-index: 1;
       }
 
-      /* Animated border trail for carousel cards.
+      /* Animated border trail for carousel cards (Frost Freeze style).
          The solid background-color acts as a static 1px border;
-         the conic gradient sweeps an amber highlight over it. */
+         the conic gradient sweeps an ice-blue/cyan highlight over it. */
       .animated-border-trail {
         position: relative;
         overflow: hidden;
         border-radius: 0.75rem;
         padding: 1px;
         background-color: #e4e4e7;
-        background-image: conic-gradient(from var(--angle) at 50% 50%, transparent 80%, rgba(245, 158, 11, 0.9));
+        background-image: conic-gradient(from var(--angle) at 50% 50%, transparent 80%, rgba(56, 189, 248, 0.4) 90%, rgba(186, 230, 253, 0.95));
         animation: trail 10s linear infinite;
       }
 
       .dark .animated-border-trail {
         background-color: #27272a;
+        background-image: conic-gradient(from var(--angle) at 50% 50%, transparent 80%, rgba(6, 182, 212, 0.4) 90%, rgba(186, 230, 253, 0.95));
       }
 
       .animated-border-trail > * {
