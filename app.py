@@ -36,7 +36,10 @@ app.jinja_env.globals['GLOSSARY'] = GLOSSARY
 def inject_ui_mode():
     """Excel mode flag, mirrored from localStorage into the ui_mode cookie by
     base.html so structural rendering can differ server-side."""
-    return {'excel_mode': request.cookies.get('ui_mode') == 'excel'}
+    ui_mode = request.cookies.get('ui_mode')
+    if ui_mode is None:
+        return {'excel_mode': True}
+    return {'excel_mode': ui_mode == 'excel'}
 
 
 @app.template_filter('xlfmt')

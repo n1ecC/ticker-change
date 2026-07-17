@@ -191,11 +191,11 @@
     <link rel="stylesheet" href="/static/excel-mode.css">
     <script>
       // Initialize theme before page load to prevent flash. Three states:
-      // 'light' | 'dark' | 'excel'. Default to dark. Excel is a light theme,
+      // 'light' | 'dark' | 'excel'. Default to excel. Excel is a light theme,
       // so it never coexists with the dark class.
       (function () {
         var t = localStorage.theme;
-        if (t !== 'light' && t !== 'excel') t = 'dark';
+        if (t !== 'light' && t !== 'dark') t = 'excel';
         document.documentElement.classList.toggle('dark', t === 'dark');
         document.documentElement.classList.toggle('excel', t === 'excel');
         // Mirror to a cookie so the server can render Excel-mode structure.
@@ -304,7 +304,7 @@
 
         function currentTheme() {
           const t = localStorage.getItem('theme');
-          return (t === 'light' || t === 'excel') ? t : 'dark';
+          return (t === 'light' || t === 'dark') ? t : 'excel';
         }
 
         function nextTheme() {
