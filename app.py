@@ -415,12 +415,24 @@ def generate_stock_chart(ticker, period="5y"):
             row=2, col=1
         )
 
+        records = [
+            {
+                'time': idx.strftime('%Y-%m-%d'),
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+                'volume': int(row['volume'])
+            }
+            for idx, row in df.iterrows()
+        ]
+
         chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
         date_range = {
             'start': df.index[0].strftime('%Y-%m-%d'),
             'end':   df.index[-1].strftime('%Y-%m-%d')
         }
-        return {'html': chart_html, 'date_range': date_range}
+        return {'html': chart_html, 'date_range': date_range, 'records': records}
 
     except Exception as e:
         print(f"Chart generation failed for {ticker}: {e}")
@@ -506,6 +518,7 @@ def get_stock_data(ticker):
         "net_change_data": net_change_data,
         "chart_html": chart_result['html'] if chart_result else None,
         "chart_date_range": chart_result['date_range'] if chart_result else None,
+        "chart_records": chart_result.get('records', []) if chart_result else [],
     }
 
 @app.route('/')

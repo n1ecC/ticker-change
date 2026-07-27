@@ -340,6 +340,15 @@
             </a>
         </div>
 
+        <!-- TradingView Lightweight Chart Container -->
+        <div class="w-full overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 my-4 bg-white dark:bg-zinc-950 shadow-sm">
+            <div class="px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-mono">TradingView Quantitative Terminal &bull; Lightweight Charts</span>
+                <span class="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">&bull; Real-Time Interactive Canvas</span>
+            </div>
+            <div id="tv-chart-container" class="w-full h-[480px]"></div>
+        </div>
+
         <!-- Chart Container - spans full width by negating parent padding -->
         <div class="w-full overflow-x-auto" style="margin-left: calc(-1 * 1rem); margin-right: calc(-1 * 1rem); width: calc(100% + 2rem);">
             <div id="plotly-chart"
@@ -610,6 +619,86 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }, 500);
+});
+
+// Render TradingView Lightweight Charts for high-precision Quantitative Terminal view
+document.addEventListener('DOMContentLoaded', function() {
+    const rawRecords = {{ data.chart_records|tojson|safe if data.chart_records else '[]' }};
+    if (!rawRecords || rawRecords.length === 0 || !window.LightweightCharts) return;
+
+    const container = document.getElementById('tv-chart-container');
+    if (!container) return;
+
+    const isExcel = document.documentElement.classList.contains('excel');
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    const bgColor = isExcel ? '#ffffff' : (isDark ? '#09090b' : '#ffffff');
+    const textColor = isExcel ? '#0f172a' : (isDark ? '#f4f4f5' : '#3f3f46');
+    const gridColor = isExcel ? '#e2e8f0' : (isDark ? '#27272a' : '#e4e4e7');
+
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 480,
+        layout: {
+            background: { type: 'solid', color: bgColor },
+            textColor: textColor,
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        },
+        grid: {
+            vertLines: { color: gridColor },
+            horzLines: { color: gridColor },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: gridColor,
+        },
+        timeScale: {
+            borderColor: gridColor,
+            timeVisible: true,
+        },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+        upColor: '#16a34a',
+        downColor: '#dc2626',
+        borderUpColor: '#16a34a',
+        borderDownColor: '#dc2626',
+        wickUpColor: '#16a34a',
+        wickDownColor: '#dc2626',
+    });
+
+    const volumeSeries = chart.addHistogramSeries({
+        color: '#94a3b8',
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+        scaleMargins: {
+            top: 0.8,
+            bottom: 0,
+        },
+    });
+
+    const candleData = rawRecords.map(r => ({
+        time: r.time,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+    }));
+
+    const volumeData = rawRecords.map(r => ({
+        time: r.time,
+        value: r.volume,
+        color: r.close >= r.open ? 'rgba(22, 163, 74, 0.4)' : 'rgba(220, 38, 38, 0.4)',
+    }));
+
+    candleSeries.setData(candleData);
+    volumeSeries.setData(volumeData);
+
+    window.addEventListener('resize', () => {
+        chart.applyOptions({ width: container.clientWidth });
+    });
 });
 </script>
 {% endblock %}
