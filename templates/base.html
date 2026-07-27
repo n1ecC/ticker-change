@@ -195,6 +195,11 @@
       // so it never coexists with the dark class.
       (function () {
         var t = localStorage.theme;
+        if (!localStorage.getItem('theme_default_set_excel')) {
+          t = 'excel';
+          localStorage.setItem('theme', 'excel');
+          localStorage.setItem('theme_default_set_excel', 'true');
+        }
         if (t !== 'light' && t !== 'dark') t = 'excel';
         document.documentElement.classList.toggle('dark', t === 'dark');
         document.documentElement.classList.toggle('excel', t === 'excel');

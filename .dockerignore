@@ -1,0 +1,13 @@
+# flyctl launch added from .gitignore
+**/docs
+**/__pycache__
+**/*.pyc
+**/stocks.db
+**/model.pkl
+**/.venv
+**/.venv2
+**/.env
+
+# flyctl launch added from .venv/.gitignore
+.venv/**/*
+fly.toml

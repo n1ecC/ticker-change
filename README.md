@@ -21,7 +21,7 @@ comes from free-tier APIs (Finnhub, FMP, SEC EDGAR). Every data source degrades
 gracefully — the dashboard always renders, even when a provider is slow,
 rate-limited, or unconfigured.
 
-- **Live demo:** https://ticker-change.onrender.com
+- **Live demo:** https://ticker-change.fly.dev
 
 ---
 
@@ -306,15 +306,13 @@ JSON variants of every view, plus health and config:
 
 ---
 
-## Deploy notes (Render)
+## Deploy notes (Fly.io & Render)
 
-- Repo includes a `Dockerfile` and `Procfile` suitable for Render.
-- `render.yaml` declares all env vars with `sync: false` — set values in the
-  Render dashboard; never commit secrets.
-- Recommended health-check path: `/health`.
-- Enable `Auto-Deploy` for the connected branch, or trigger a manual deploy.
-- The SQLite cache lives on the app's local disk, which is ephemeral on Render —
-  it acts purely as a cache and is rebuilt from the providers after a redeploy.
+- **Live Fly.io App:** https://ticker-change.fly.dev
+- **Fly.io Setup:** App is configured via `fly.toml` with Docker container deployment and a 1GB persistent volume (`stocks_data`) mounted at `/data`.
+- **Database Persistence:** `DB_PATH` is set to `/data/stocks.db` on Fly.io, preserving user API keys, cached options chains, and historical prices across restarts.
+- **Deployment Command:** Deploy to Fly.io using `fly deploy --ha=false` (single-instance deploy avoids SQLite desync).
+- Repo also includes a `Dockerfile`, `Procfile`, and `render.yaml` suitable for Render deployment.
 
 ---
 
@@ -335,6 +333,7 @@ templates/        Jinja2 templates (base, index, stock, analytics, positioning,
                   live, momentum, ai_summary, settings, glossary)
 requirements.txt  Python dependencies
 Dockerfile        Container build for deployment
+fly.toml          Fly.io service & volume mount configuration
 Procfile          Gunicorn process definition for Render/Heroku
 render.yaml       Render service definition with env-var declarations
 .env.example      Example environment configuration
@@ -350,7 +349,7 @@ render.yaml       Render service definition with env-var declarations
 - **AI:** Anthropic, OpenAI, Google Gemini, OpenRouter (multi-provider fallback)
 - **Data:** Finnhub, Financial Modeling Prep, SEC EDGAR, yfinance
 - **Frontend:** Tailwind CSS, Jinja2, Plotly.js
-- **Deployment:** Gunicorn, Docker, Render
+- **Deployment:** Fly.io (with Persistent Volume), Gunicorn, Docker, Render
 
 ---
 
