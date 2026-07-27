@@ -1251,6 +1251,9 @@ def _normalize_insider_df(raw):
     else:
         idf.index = pd.to_datetime(idf.index, errors='coerce')
 
+    idf = idf[idf.index.notna()]
+    idf = idf[idf.index >= '2000-01-01']
+
     shares_col = next((c for c in idf.columns if c.lower() == 'shares'), None)
     text_col   = next((c for c in idf.columns if c.lower() == 'text'), None)
     name_col   = next((c for c in idf.columns if c.lower() == 'insider'), None)
@@ -1330,11 +1333,19 @@ def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
     try:
         raw = _get_yf_ticker(ticker).insider_transactions
         idf, err = _normalize_insider_df(raw)
-        if idf is None:
+        if idf is None or idf.empty:
             return None
+
+        # Bound insider transactions to price_df time window if price_df is available
+        if price_df is not None and not price_df.empty:
+            min_date = price_df.index.min()
+            idf = idf[idf.index >= min_date]
 
         # Exclude gifts/grants (sign 0) from the net monthly bar
         signed = idf[idf['_signed'] != 0]
+        if signed.empty:
+            return None
+
         monthly = signed['_signed'].resample('ME').sum()
         monthly = monthly[monthly != 0]
         if monthly.empty:
@@ -1351,20 +1362,38 @@ def get_insider_chart(ticker: str, price_df: pd.DataFrame) -> str | None:
             yaxis='y',
             hovertemplate='%{x|%b %Y}<br>%{y:+,.0f} shares<extra></extra>',
         ))
-        fig.add_trace(go.Scatter(
-            x=price_df.index, y=price_df['close'],
-            mode='lines', name='Price',
-            line=dict(color='#f59e0b', width=1.5),
-            yaxis='y2',
-            hovertemplate='%{x|%b %d}<br>$%{y:.2f}<extra></extra>',
-        ))
+        if price_df is not None and not price_df.empty:
+            fig.add_trace(go.Scatter(
+                x=price_df.index, y=price_df['close'],
+                mode='lines', name='Price',
+                line=dict(color='#f59e0b', width=1.5),
+                yaxis='y2',
+                hovertemplate='%{x|%b %d}<br>$%{y:.2f}<extra></extra>',
+            ))
+
         fig.update_layout(
-            yaxis =dict(title='Net Shares (Insider)', side='left'),
-            yaxis2=dict(title='Price ($)', side='right',
-                        overlaying='y', showgrid=False),
+            xaxis=dict(
+                type='date',
+                title_text='',
+                fixedrange=False,
+                rangeselector=dict(
+                    buttons=list([
+                        dict(count=6, label="6M", step="month", stepmode="backward"),
+                        dict(count=1, label="1Y", step="year", stepmode="backward"),
+                        dict(count=3, label="3Y", step="year", stepmode="backward"),
+                        dict(label="All", step="all")
+                    ]),
+                    bgcolor='#f4f4f5',
+                    activecolor='#f59e0b',
+                    x=0, y=1.1,
+                    font=dict(size=10)
+                )
+            ),
+            yaxis=dict(title='Net Shares (Insider)', side='left', fixedrange=False, autorange=True),
+            yaxis2=dict(title='Price ($)', side='right', overlaying='y', showgrid=False, fixedrange=False, autorange=True),
             template='plotly_white',
-            height=350,
-            margin=dict(l=60, r=60, t=30, b=50),
+            height=380,
+            margin=dict(l=60, r=60, t=50, b=40),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             legend=dict(orientation='h', yanchor='bottom', y=1.02),
