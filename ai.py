@@ -72,9 +72,23 @@ def _context(ticker: str, data: dict) -> str:
     return json.dumps(payload, default=str, indent=2)
 
 
+def _preprocess_markdown_tables(md: str) -> str:
+    import re
+    if not md:
+        return md
+    # 1. Separate table rows compressed with double pipes || or | |
+    md = re.sub(r'\|\s*\|', '|\n|', md)
+    # 2. Separate table title/caption from the start of table headers on the same line
+    md = re.sub(r'(?:\n|^)([^\n|]*?Table\s+[A-Z]:[^\n|]+?)\s*(\|.*)', r'\n\n#### \1\n\n\2', md, flags=re.IGNORECASE)
+    # 3. Clean up any duplicated header markers or leading symbols in title lines
+    md = re.sub(r'####\s*[\*\#]*\s*(Table\s+[A-Z]:[^\n]+?)\s*[\*\#]*\s*$', r'#### \1', md, flags=re.MULTILINE | re.IGNORECASE)
+    return md
+
+
 def _to_html(md: str) -> str:
     try:
         import markdown
+        md = _preprocess_markdown_tables(md)
         return markdown.markdown(md, extensions=["extra", "sane_lists"])
     except Exception:
         # No markdown lib installed — render as readable preformatted text.
@@ -230,7 +244,15 @@ Your task is to write a highly rigorous, comprehensive quantitative analysis and
 Format your response in GitHub-Flavoured Markdown. Use the following structured sections:
 1. ### Executive Summary: High-level overview of the name.
 2. ### Comprehensive Data Summary (Tables):
-   You must compile the input numbers into structured Markdown tables summarizing EVERY single category of data provided:
+   You must compile the input numbers into structured GitHub-Flavored Markdown tables summarizing EVERY single category of data provided.
+   CRITICAL TABLE FORMATTING RULE: Each table MUST be formatted as a standard multi-line Markdown table with its own header row, delimiter row (`|---|---|`), and data rows on separate lines. Do NOT combine table cells onto a single line or use double pipes `||`.
+   Example standard table format:
+   #### Table A: Price, Realized Volatility & Risk Metrics
+   | Metric | Value | Metric | Value |
+   | --- | --- | --- | --- |
+   | Current Price | $308.91 | Annualized Vol | 28.03% |
+
+   Create separate standard Markdown tables for:
    - Table A: Price, Realized Volatility & Risk Metrics (drawdown, Sharpe, Beta, VaR, Expected Shortfall, etc.)
    - Table B: Valuation & Consensus Growth Guidance (PE, PEG, revenue growth, sector/industry, etc.)
    - Table C: Options Market & Dealer GEX Profile (flip point, walls, HVL, net regime, etc.)
