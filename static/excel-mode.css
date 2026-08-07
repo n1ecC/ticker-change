@@ -70,6 +70,7 @@ html.excel nav a,
 html.excel nav a span,
 html.excel nav button { color: #ffffff !important; }
 html.excel nav .text-amber-500,
+html.excel nav .text-amber-600,
 html.excel nav .text-amber-400 { color: #ffffff !important; }
 html.excel nav [class*="text-zinc"] { color: #d7e8de !important; }
 html.excel nav a:hover,
@@ -209,3 +210,21 @@ html.excel .xl-sheet-body .grid > div {
 }
 html.excel .xl-sheet-body .grid > div > p:first-child { margin-bottom: 2px; }
 
+@media (max-width: 640px) {
+  html.excel .xl-sheet {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html.excel .xl-grid {
+    min-width: 34rem;
+  }
+
+  html.excel .xl-titlebar {
+    min-width: 34rem;
+  }
+
+  html.excel .xl-sheet-body {
+    padding: 10px;
+  }
+}

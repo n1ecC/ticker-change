@@ -1,0 +1,133 @@
+/* Shared responsive behavior for the dense dashboard layouts. */
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+canvas {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  min-width: 0;
+}
+
+#mobile-nav-toggle {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.mobile-nav-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #52525b;
+}
+
+.mobile-nav-link:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.dark .mobile-nav-link {
+  color: #e4e4e7;
+}
+
+.dark .mobile-nav-link:hover {
+  background: #27272a;
+  color: #fff;
+}
+
+.mobile-horizontal-scroll,
+.responsive-tabs {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-horizontal-scroll::-webkit-scrollbar,
+.responsive-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-horizontal-scroll > *,
+.responsive-tabs > * {
+  flex: 0 0 auto;
+}
+
+.responsive-table {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.js-plotly-plot,
+.plot-container,
+.svg-container {
+  max-width: 100% !important;
+}
+
+@media (max-width: 767px) {
+  .responsive-tabs {
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+  }
+
+  .mobile-card-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .mobile-wrap-header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .mobile-wrap-header > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mobile-wrap-header h1,
+  .mobile-wrap-header h2,
+  .mobile-wrap-header p,
+  .mobile-wrap-header span {
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-full-form {
+    width: 100%;
+  }
+
+  .mobile-full-form input,
+  .mobile-full-form select {
+    width: 100%;
+  }
+
+  .mobile-value {
+    font-size: clamp(1.4rem, 8vw, 1.875rem) !important;
+    overflow-wrap: anywhere;
+  }
+
+  .plotly .modebar {
+    transform: scale(0.85);
+    transform-origin: top right;
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-two-col-collapse {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

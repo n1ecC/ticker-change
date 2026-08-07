@@ -276,6 +276,64 @@
     padding: 6px 10px !important;
   }
 
+  @media (max-width: 640px) {
+    .excel-toolbar {
+      align-items: stretch !important;
+      flex-direction: column !important;
+    }
+
+    .excel-toolbar > div:first-child {
+      min-width: 0;
+    }
+
+    .excel-toolbar h1 {
+      overflow-wrap: anywhere;
+    }
+
+    .excel-toolbar button {
+      justify-content: center;
+      width: 100%;
+    }
+
+    .excel-workbook-body {
+      padding: 12px !important;
+    }
+
+    .excel-search-form {
+      flex-direction: column;
+      max-width: none !important;
+    }
+
+    .excel-search-form button {
+      min-height: 40px;
+      width: 100%;
+    }
+
+    .excel-tabs-container {
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .excel-sheet-title-bar {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .excel-grid-table {
+      min-width: 620px;
+    }
+
+    .ai-strategy-report {
+      overflow-x: auto;
+    }
+
+    .ai-strategy-report table {
+      min-width: 560px;
+    }
+  }
+
   /* Print Media Overrides */
   @media print {
     body, html {
@@ -325,10 +383,10 @@
     </div>
   </div>
 
-  <div class="p-6">
+  <div class="excel-workbook-body p-6">
     <!-- Search bar inside the theme sheet -->
     <div class="mb-6 no-print bg-slate-50 p-4 rounded border border-slate-300 flex flex-wrap gap-4 items-center justify-between">
-      <form method="get" action="/ai-summary" class="flex gap-3 max-w-sm w-full">
+      <form method="get" action="/ai-summary" class="excel-search-form flex gap-3 max-w-sm w-full">
         <input
           type="text"
           name="ticker"
@@ -371,7 +429,7 @@
     {% elif data %}
     <!-- Document Header -->
     <div class="border-b-2 border-slate-900 pb-4 mb-6">
-      <div class="flex justify-between items-baseline">
+      <div class="mobile-wrap-header flex justify-between items-baseline gap-2">
         <h2 class="text-2xl font-bold tracking-tight uppercase">{{ data.ticker }} - STRATEGY WORKBOOK</h2>
         <span class="text-xs font-mono text-slate-400">MODEL GENERATION: v3.1-lite</span>
       </div>

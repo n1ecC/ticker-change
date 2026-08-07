@@ -190,6 +190,7 @@
       .dark .text-zinc-600 { color: #ffffff !important; }
     </style>
     <link rel="stylesheet" href="/static/excel-mode.css">
+    <link rel="stylesheet" href="/static/responsive.css">
     <script>
       // Initialize theme before page load to prevent flash. Three states:
       // 'light' | 'dark' | 'excel'. Default to excel. Excel is a light theme,
@@ -214,7 +215,7 @@
     <nav class="bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
-          <div class="flex items-center gap-6">
+          <div class="flex min-w-0 items-center gap-6">
             <a id="brand-link" href="/" class="inline-flex items-center gap-2.5 group">
               <svg class="w-4 h-4 text-amber-500" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <rect x="1" y="9" width="3" height="6" rx="1"/>
@@ -223,12 +224,14 @@
               </svg>
               <span class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">ticker<span class="text-amber-500">/</span>change</span>
             </a>
-            <a id="nav-analytics" href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
-            <a id="nav-live" href="/live" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Live Microstructure</a>
-            <a id="nav-momentum" href="/momentum" class="text-sm text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold transition-colors">Momentum Alpha</a>
+            <div class="hidden md:flex items-center gap-6">
+              <a id="nav-analytics" href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
+              <a id="nav-live" href="/live" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Live Microstructure</a>
+              <a id="nav-momentum" href="/momentum" class="text-sm text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold transition-colors">Momentum Alpha</a>
+            </div>
           </div>
           <div class="flex items-center gap-2">
-            <a href="/glossary" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium mr-2">Glossary</a>
+            <a href="/glossary" class="hidden md:inline text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium mr-2">Glossary</a>
             <a href="/settings" class="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors duration-200" title="API key settings" aria-label="Settings">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
@@ -246,6 +249,29 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 4.5h15v15h-15zM4.5 9.75h15M4.5 14.25h15M9.75 4.5v15M15 4.5v15"/>
               </svg>
             </button>
+            <button
+              id="mobile-nav-toggle"
+              type="button"
+              class="md:hidden inline-flex items-center justify-center p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300"
+              aria-controls="mobile-nav-menu"
+              aria-expanded="false"
+              aria-label="Open navigation menu"
+            >
+              <svg id="mobile-nav-open-icon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
+              </svg>
+              <svg id="mobile-nav-close-icon" class="hidden w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="mobile-nav-menu" class="hidden md:hidden border-t border-zinc-200 dark:border-zinc-800 py-3">
+          <div class="grid grid-cols-2 gap-2">
+            <a id="mobile-nav-analytics" href="/analytics" class="mobile-nav-link">Analytics</a>
+            <a id="mobile-nav-live" href="/live" class="mobile-nav-link">Live Market</a>
+            <a id="mobile-nav-momentum" href="/momentum" class="mobile-nav-link text-amber-600 dark:text-amber-400">Momentum</a>
+            <a href="/glossary" class="mobile-nav-link">Glossary</a>
           </div>
         </div>
       </div>
@@ -253,8 +279,8 @@
 
     <!-- Ticker Sub-Navbar -->
     <div id="ticker-sub-nav" class="hidden bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 py-2.5">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center gap-3.5">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div class="flex min-w-0 items-center gap-3.5">
           <!-- Active Ticker Pill -->
           <div class="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400 font-bold text-sm uppercase tracking-wider font-mono">
             <span id="sub-nav-ticker">--</span>
@@ -263,7 +289,7 @@
         </div>
 
         <!-- Links to specific views for this ticker -->
-        <div class="flex flex-wrap items-center gap-1 sm:gap-2">
+        <div class="mobile-horizontal-scroll order-3 w-full lg:order-none lg:w-auto flex items-center gap-1 sm:gap-2">
           <a id="sub-link-stock" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Price Table</a>
           <a id="sub-link-analytics" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Risk Analytics</a>
           <a id="sub-link-positioning" href="#" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors">Market Positioning</a>
@@ -272,13 +298,13 @@
         </div>
 
         <!-- Ticker Search in Navbar -->
-        <form id="sub-nav-search-form" class="flex items-center m-0" onsubmit="handleSubNavSearch(event)">
-          <div class="relative">
+        <form id="sub-nav-search-form" class="flex min-w-0 items-center m-0" onsubmit="handleSubNavSearch(event)">
+          <div class="relative min-w-0">
             <input 
               id="sub-nav-search-input"
               type="text" 
               placeholder="Search ticker..." 
-              class="w-36 sm:w-44 px-3 py-1.5 pl-8 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100"
+              class="w-32 sm:w-44 px-3 py-1.5 pl-8 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100"
             />
             <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -288,7 +314,7 @@
       </div>
     </div>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
       {% block content %}{% endblock %}
     </main>
 
@@ -296,6 +322,31 @@
       <p class="text-xs uppercase tracking-wider">Powered by yfinance &middot; Real-time market data</p>
     </footer>
 
+    <script>
+      // Compact navigation for small screens.
+      (function () {
+        const button = document.getElementById('mobile-nav-toggle');
+        const menu = document.getElementById('mobile-nav-menu');
+        const openIcon = document.getElementById('mobile-nav-open-icon');
+        const closeIcon = document.getElementById('mobile-nav-close-icon');
+        if (!button || !menu) return;
+
+        function setOpen(open) {
+          menu.classList.toggle('hidden', !open);
+          openIcon.classList.toggle('hidden', open);
+          closeIcon.classList.toggle('hidden', !open);
+          button.setAttribute('aria-expanded', String(open));
+          button.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+        }
+
+        button.addEventListener('click', function () {
+          setOpen(button.getAttribute('aria-expanded') !== 'true');
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') setOpen(false);
+        });
+      })();
+    </script>
     <script>
       // Theme toggle: cycles light -> dark -> excel -> light.
       // The button shows the icon of the NEXT mode in the cycle.
@@ -358,8 +409,10 @@
         const links = {
           'brand-link':      '/stock?ticker=' + ticker,
           'nav-analytics':   '/analytics?ticker=' + ticker,
+          'mobile-nav-analytics': '/analytics?ticker=' + ticker,
           'nav-positioning': '/positioning?ticker=' + ticker,
           'nav-live':        '/live?ticker=' + ticker,
+          'mobile-nav-live': '/live?ticker=' + ticker,
           'nav-ai-summary':  '/ai-summary?ticker=' + ticker,
         };
         Object.entries(links).forEach(([id, href]) => {
