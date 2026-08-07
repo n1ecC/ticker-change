@@ -1,11 +1,12 @@
 from __future__ import annotations
+import os
 import sqlite3
 import json
 import pandas as pd
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-DB_PATH = "stocks.db"
+DB_PATH = os.environ.get("DB_PATH", "stocks.db")
 FRESHNESS_HOURS = 1
 
 
