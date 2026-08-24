@@ -125,7 +125,9 @@
                             <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition">
                                 <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ row.period }}</td>
                                 <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-mono font-medium
-                                    {% if row.value != 'N/A' and row.period != 'Current Price' %}
+                                    {% if row.is_weekend %}
+                                        text-zinc-400 dark:text-zinc-600
+                                    {% elif row.value != 'N/A' and row.period != 'Current Price' %}
                                         {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-rose-600 dark:text-rose-400' }}
                                     {% elif row.value == 'N/A' %}
                                         text-zinc-400 dark:text-zinc-600
@@ -134,6 +136,8 @@
                                     {% endif %}">
                                     {% if row.period == 'Current Price' %}
                                         {{ row.value }}
+                                    {% elif row.is_weekend %}
+                                        -
                                     {% elif row.value == 'N/A' %}
                                         N/A
                                     {% else %}
@@ -168,7 +172,9 @@
                             <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition">
                                 <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ row.period }}</td>
                                 <td class="px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm text-right font-mono font-medium
-                                    {% if row.value != 'N/A' and row.period != 'Current Price' %}
+                                    {% if row.is_weekend %}
+                                        text-zinc-400 dark:text-zinc-600
+                                    {% elif row.value != 'N/A' and row.period != 'Current Price' %}
                                         {{ 'text-emerald-600 dark:text-emerald-400' if row.is_positive else 'text-rose-600 dark:text-rose-400' }}
                                     {% elif row.value == 'N/A' %}
                                         text-zinc-400 dark:text-zinc-600
@@ -177,6 +183,8 @@
                                     {% endif %}">
                                     {% if row.period == 'Current Price' %}
                                         {{ row.value }}
+                                    {% elif row.is_weekend %}
+                                        -
                                     {% elif row.value == 'N/A' %}
                                         N/A
                                     {% else %}
