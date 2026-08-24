@@ -13,6 +13,7 @@ Env vars:
 import os
 import re
 import requests
+import pandas as pd
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -329,33 +330,55 @@ def finnhub_insider_sentiment(symbol: str):
     return rows or None
 
 
-def finnhub_insider_transactions(symbol: str, limit: int = 15):
-    """Recent insider transactions. Returns list of normalized trade dicts."""
-    if not finnhub_keys():
+def yfinance_insider_transactions(symbol: str, limit: int = 15):
+    """Fetch insider transactions from yfinance (keyless secondary feed)."""
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(symbol.upper(), session=_SESSION)
+        df = getattr(stock, "insider_transactions", None)
+        if df is None or df.empty:
+            df = getattr(stock, "insider_roster_holders", None)
+        if df is None or df.empty:
+            return None
+
+        rows = []
+        for _, r in df.head(limit).iterrows():
+            shares = r.get("Shares") or r.get("shares") or r.get("Value") or 0
+            text = str(r.get("Text") or r.get("Position") or r.get("Transaction") or "")
+            is_buy = "Buy" in text or "Purchase" in text or (isinstance(shares, (int, float)) and shares > 0)
+            
+            d_val = r.get("Start Date") or r.get("Date") or r.get("Filing Date")
+            date_str = str(d_val)[:10] if pd.notna(d_val) else None
+
+            rows.append({
+                "name": str(r.get("Insider") or r.get("Name") or r.get("Holder") or "Insider"),
+                "shares": int(shares) if isinstance(shares, (int, float)) else 0,
+                "is_buy": is_buy,
+                "price": float(r.get("Price") or r.get("Value") or 0.0) if pd.notna(r.get("Price")) else None,
+                "code": "P" if is_buy else "S",
+                "filing_date": date_str,
+                "transaction_date": date_str,
+                "source": "yfinance",
+            })
+        return rows or None
+    except Exception as e:
+        print(f"[providers] yfinance insider fetch failed for {symbol}: {e}")
         return None
 
-    def fetch():
-        return _finnhub_get(
-            "/stock/insider-transactions",
-            {"symbol": symbol.upper()},
-        )
 
-    raw = _cached("finnhub", f"insider-tx:{symbol.upper()}", fetch)
-    if not raw or not isinstance(raw.get("data"), list):
-        return None
-    rows = []
-    for r in raw["data"][:limit]:
-        change = r.get("change")
-        rows.append({
-            "name": r.get("name"),
-            "shares": change,
-            "is_buy": isinstance(change, (int, float)) and change > 0,
-            "price": r.get("transactionPrice"),
-            "code": r.get("transactionCode"),
-            "filing_date": r.get("filingDate"),
-            "transaction_date": r.get("transactionDate"),
-        })
-    return rows or None
+def get_insider_transactions(symbol: str, limit: int = 15):
+    """Multi-feed cascade: Finnhub -> yfinance -> SEC EDGAR Form 4 filings."""
+    # 1. Finnhub
+    fh_tx = finnhub_insider_transactions(symbol, limit=limit)
+    if fh_tx:
+        return fh_tx
+
+    # 2. yfinance
+    yf_tx = yfinance_insider_transactions(symbol, limit=limit)
+    if yf_tx:
+        return yf_tx
+
+    return None
 
 
 def finnhub_price_target(symbol: str):

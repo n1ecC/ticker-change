@@ -197,7 +197,7 @@ html.excel .xl-muted { color: #64748b; font-weight: 400; }
 
 /* Panels converted via the panel() macro: re-grid their label/value pairs
    into bordered cells. gap collapses so cell borders form the gridlines. */
-html.excel .xl-sheet-body { padding: 12px 16px; }
+html.excel .xl-sheet-body { padding: 8px 12px; }
 html.excel .xl-sheet-body .grid {
   gap: 0 !important;
   border-top: 1px solid var(--xl-gridline);
@@ -206,9 +206,28 @@ html.excel .xl-sheet-body .grid {
 html.excel .xl-sheet-body .grid > div {
   border-right: 1px solid var(--xl-gridline);
   border-bottom: 1px solid var(--xl-gridline);
-  padding: 6px 10px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
-html.excel .xl-sheet-body .grid > div > p:first-child { margin-bottom: 2px; }
+html.excel .xl-sheet-body .grid > div > p:first-child { 
+  margin-bottom: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #475569;
+  white-space: nowrap;
+}
+html.excel .xl-sheet-body .grid > div > p:last-child {
+  margin-top: 0;
+  font-family: ui-monospace, Consolas, monospace !important;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
 
 @media (max-width: 640px) {
   html.excel .xl-sheet {

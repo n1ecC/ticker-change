@@ -310,4 +310,78 @@ GLOSSARY: dict[str, dict] = {
         "short": "Year-over-year growth in profits and sales — the engine behind forward valuation multiples.",
         "long": "Trailing year-over-year change in earnings and revenue. Revenue growth shows top-line demand; earnings growth shows whether that translates to the bottom line. Earnings growing faster than revenue indicates margin expansion; the reverse, margin pressure.",
     },
+
+    # ----------------------------------------------------------------- Institutional Analytics
+    "vpin": {
+        "term": "VPIN (Order Flow Toxicity)",
+        "section": "Institutional Analytics",
+        "short": "Volume-Synchronized Probability of Toxicity measuring informed trader order flow imbalances.",
+        "long": "Easley-Kiefer-O'Hara Volume-Synchronized Probability of Toxicity. Measures toxicity by bucketing trading volume and quantifying directional order flow asymmetry. High VPIN flags aggressive informed trading and elevated short-term volatility or flash crash risk.",
+        "formula": "VPIN = Σ|V_buy - V_sell| / (2 × N × V_bucket)",
+    },
+    "corwin_schultz": {
+        "term": "Corwin-Schultz Bid-Ask Spread",
+        "section": "Institutional Analytics",
+        "short": "High-Low spread estimator that extracts effective bid-ask spreads from daily high and low prices.",
+        "long": "Corwin & Schultz (2012) estimator deriving effective bid-ask spreads from consecutive 1-day and 2-day high-to-low price ratios, filtering out fundamental volatility from illiquidity friction.",
+    },
+    "squeeze_risk": {
+        "term": "Short Squeeze Risk Score",
+        "section": "Institutional Analytics",
+        "short": "Multi-factor composite score [0-100] quantifying short squeeze vulnerability.",
+        "long": "Multi-factor squeeze risk metric combining Short Interest % Float, Days to Cover (Short Ratio), Cost to Borrow (CTB), and Negative Dealer Gamma Exposure (GEX) acceleration.",
+    },
+    "dual_betas": {
+        "term": "Regime-Conditional Dual Betas",
+        "section": "Institutional Analytics",
+        "short": "Bull Beta vs Bear Beta measuring asymmetric systematic market sensitivity.",
+        "long": "Separates historical covariance against the benchmark (SPY) into Bull market days (SPY > 0) versus Bear market days (SPY < 0), revealing upside participation versus downside exposure.",
+    },
+    "upside_capture": {
+        "term": "Upside Capture Ratio",
+        "section": "Institutional Analytics",
+        "short": "Percentage of benchmark gains captured when the market is rising (>100% outperforms up-markets).",
+        "long": "Compound return of the stock divided by compound return of benchmark during positive benchmark periods. Above 100% means the asset generates alpha during market rallies.",
+    },
+    "downside_capture": {
+        "term": "Downside Capture Ratio",
+        "section": "Institutional Analytics",
+        "short": "Percentage of benchmark losses suffered when the market is falling (<100% protects capital).",
+        "long": "Compound return of the asset divided by benchmark return during negative benchmark periods. Below 100% signals superior downside protection.",
+    },
+    "vanna": {
+        "term": "Vanna (dDelta / dVol)",
+        "section": "Institutional Analytics",
+        "short": "Sensitivity of option Delta to changes in implied volatility (or dVega / dSpot).",
+        "long": "Cross-derivative measuring how delta changes as implied volatility fluctuates. Critical for dealer positioning: when IV collapses (vanna rally), dealers must buy underlying stock to maintain delta-neutral hedges.",
+        "formula": "Vanna = ∂Δ / ∂σ = -φ(d1) × d2 / σ",
+    },
+    "charm": {
+        "term": "Charm (Delta Decay)",
+        "section": "Institutional Analytics",
+        "short": "Rate of change of option Delta over time (dDelta / dTime).",
+        "long": "Measures delta decay as time to expiration elapses. In positive gamma/delta setups into weekend or monthly OPEX, charm decay forces predictable dealer rebalancing flows.",
+        "formula": "Charm = -∂Δ / ∂t",
+    },
+    "vomma": {
+        "term": "Vomma / Volga (dVega / dVol)",
+        "section": "Institutional Analytics",
+        "short": "Second-order Greek measuring the acceleration of Vega with respect to implied volatility.",
+        "long": "Vomma captures option convexity with respect to volatility. High vomma indicates out-of-the-money options that become extremely sensitive to vega spikes during market stress.",
+        "formula": "Vomma = ∂ν / ∂σ = ν × d1 × d2 / σ",
+    },
+    "vrp": {
+        "term": "Variance Risk Premium (VRP)",
+        "section": "Institutional Analytics",
+        "short": "Spread between ATM Implied Volatility and 30-Day Realized Historical Volatility.",
+        "long": "VRP = Implied Volatility - Realized Volatility. Positive VRP indicates expensive option premiums suitable for volatility sellers; negative VRP indicates underpriced option convexity favouring buyers.",
+        "formula": "VRP = IV_ATM - HV_30d",
+    },
+    "sec_8k": {
+        "term": "SEC Form 8-K Filings",
+        "section": "Institutional Analytics",
+        "short": "Material unscheduled corporate events filed with the SEC EDGAR system.",
+        "long": "Material corporate disclosures including Item 1.01 (Material Contracts), 2.01 (M&A), 4.02 (Restatements), 5.02 (Executive/Director Departures), and 7.01/8.01 (Regulation FD & Other Events).",
+    },
 }
+

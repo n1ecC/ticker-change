@@ -1,0 +1,423 @@
+{# Institutional Analytics partial: Microstructure & Squeeze, Macro Dual Betas, Higher-Order Greeks, Event Study & SEC 8-K #}
+{% from "_macros.html" import metric %}
+{% from "_excel.html" import panel, stat_grid with context %}
+
+{% if data and data.institutional %}
+{% set inst = data.institutional %}
+
+<!-- Institutional Analytics Section Header -->
+<div class="flex items-center gap-3 pt-6 pb-2 mb-6 border-b border-zinc-200 dark:border-zinc-800">
+  <div class="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    </svg>
+  </div>
+  <div>
+    <h2 class="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+      <span>Institutional Quantitative Analytics</span>
+      <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">Institutional Tier</span>
+    </h2>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400">Microstructure toxicity, macro conditioning, higher-order Black-Scholes surface &amp; SEC 8-K material events</p>
+  </div>
+</div>
+
+<!-- 1. Microstructure & Squeeze Risk Gauge Grid -->
+{% if inst.microstructure %}
+{% set micro = inst.microstructure %}
+{% call panel('Microstructure & Squeeze Risk Engine') %}
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- VPIN Toxicity Card -->
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{{ metric('VPIN Toxicity', 'vpin') }}</span>
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded uppercase
+            {% if micro.toxicity_regime == 'CRITICAL' %}bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30
+            {% elif micro.toxicity_regime == 'HIGH' %}bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30
+            {% elif micro.toxicity_regime == 'MODERATE' %}bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30
+            {% else %}bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30{% endif %}">
+            {{ micro.toxicity_regime }}
+          </span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50">{{ "%.3f"|format(micro.vpin_toxicity) }}</span>
+          <span class="text-xs text-zinc-400">flow toxicity</span>
+        </div>
+      </div>
+      <div class="mt-3">
+        <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden">
+          <div class="h-full {% if micro.vpin_toxicity > 0.5 %}bg-rose-500{% elif micro.vpin_toxicity > 0.3 %}bg-amber-500{% else %}bg-emerald-500{% endif %}"
+               style="width: {{ [micro.vpin_toxicity * 100, 100]|min }}%"></div>
+        </div>
+        <p class="text-[10px] text-zinc-400 mt-1.5 leading-snug">Easley-Kiefer-O'Hara volume-synchronized order toxicity probability.</p>
+      </div>
+    </div>
+
+    <!-- Corwin-Schultz Spread -->
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{{ metric('Corwin-Schultz Spread', 'corwin_schultz') }}</span>
+          <span class="text-[10px] font-mono text-zinc-400">High-Low Estimator</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50">{{ "%.3f"|format(micro.corwin_schultz_spread_pct * 100) }}%</span>
+        </div>
+      </div>
+      <div class="mt-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60">
+        <div class="flex justify-between text-xs font-mono">
+          <span class="text-zinc-400">Roll Spread:</span>
+          <span class="font-semibold text-zinc-700 dark:text-zinc-300">{{ "%.3f"|format(micro.roll_effective_spread_pct * 100) }}%</span>
+        </div>
+        <p class="text-[10px] text-zinc-400 mt-1">Effective bid-ask spread derived from 2-day price extremes.</p>
+      </div>
+    </div>
+
+    <!-- Short Squeeze Risk Score -->
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{{ metric('Squeeze Risk Gauge', 'squeeze_risk') }}</span>
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded uppercase
+            {% if micro.squeeze_risk_level == 'EXTREME' %}bg-rose-500 text-white
+            {% elif micro.squeeze_risk_level == 'HIGH' %}bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30
+            {% elif micro.squeeze_risk_level == 'ELEVATED' %}bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30
+            {% else %}bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400{% endif %}">
+            {{ micro.squeeze_risk_level }}
+          </span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-bold font-mono
+            {% if micro.squeeze_risk_score >= 70 %}text-rose-500
+            {% elif micro.squeeze_risk_score >= 40 %}text-amber-500
+            {% else %}text-emerald-500{% endif %}">
+            {{ "%.1f"|format(micro.squeeze_risk_score) }}
+          </span>
+          <span class="text-xs text-zinc-400">/ 100 Index</span>
+        </div>
+      </div>
+      <div class="mt-3">
+        <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden">
+          <div class="h-full {% if micro.squeeze_risk_score >= 70 %}bg-rose-500{% elif micro.squeeze_risk_score >= 40 %}bg-amber-500{% else %}bg-emerald-500{% endif %}"
+               style="width: {{ micro.squeeze_risk_score }}%"></div>
+        </div>
+        <p class="text-[10px] text-zinc-400 mt-1.5 leading-snug">Multi-factor: Short Float, DTC, CTB, and negative Gamma Exposure.</p>
+      </div>
+    </div>
+
+    <!-- Amihud Illiquidity Ratio -->
+    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Amihud Illiquidity</span>
+          <span class="text-[10px] font-mono text-zinc-400">|R| / Volume</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-50">
+            {% if micro.amihud_illiquidity < 0.0001 %}
+              {{ "%.2e"|format(micro.amihud_illiquidity) }}
+            {% else %}
+              {{ "%.4f"|format(micro.amihud_illiquidity) }}
+            {% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="mt-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60">
+        <p class="text-[10px] text-zinc-400 leading-snug">Price impact per dollar traded. Lower values denote deep institutional absorption capacity.</p>
+      </div>
+    </div>
+  </div>
+{% endcall %}
+{% endif %}
+
+<!-- 2. Macro Conditioning & Dual Betas -->
+{% if inst.macro_conditioning %}
+{% set macro = inst.macro_conditioning %}
+{% call panel('Macro Conditioning & Asymmetric Dual Betas') %}
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <!-- Macro Regime Badges & Financial Indicators -->
+    <div class="lg:col-span-5 space-y-4">
+      <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4">
+        <div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-2">Macro Regime State</div>
+        <div class="flex items-center gap-2 flex-wrap mb-3">
+          <span class="px-3 py-1 text-xs font-bold font-mono rounded-lg
+            {% if 'INVERTED' in macro.regime or 'TIGHTENING' in macro.regime %}bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30
+            {% elif 'EASING' in macro.regime or 'STEEP' in macro.regime %}bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30
+            {% else %}bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700{% endif %}">
+            {{ macro.regime | replace('_', ' ') }}
+          </span>
+          {% if macro.is_inverted %}
+          <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+            Yield Curve Inverted (2s10s)
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 font-mono text-xs">
+          <div>
+            <span class="text-[10px] text-zinc-400 uppercase block font-sans">Fed Funds Rate</span>
+            <span class="font-bold text-zinc-900 dark:text-zinc-100">{{ "%.2f"|format(macro.fed_funds_rate) }}%</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-zinc-400 uppercase block font-sans">2s10s Spread</span>
+            <span class="font-bold {% if macro.yield_curve_2s10s < 0 %}text-rose-500{% else %}text-emerald-500{% endif %}">
+              {{ "%+.2f"|format(macro.yield_curve_2s10s) }}%
+            </span>
+          </div>
+          <div>
+            <span class="text-[10px] text-zinc-400 uppercase block font-sans">CPI YoY</span>
+            <span class="font-bold text-zinc-900 dark:text-zinc-100">{{ "%.1f"|format(macro.cpi_yoy) }}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Up/Down Capture Ratios -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-3.5">
+          <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">{{ metric('Upside Capture', 'upside_capture') }}</span>
+          <p class="text-xl font-bold font-mono mt-1 {% if macro.upside_capture >= 100 %}text-emerald-500{% else %}text-zinc-700 dark:text-zinc-300{% endif %}">
+            {{ "%.1f"|format(macro.upside_capture) }}%
+          </p>
+          <span class="text-[10px] text-zinc-400 mt-1 block">Participation in SPY up-market</span>
+        </div>
+
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-3.5">
+          <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">{{ metric('Downside Capture', 'downside_capture') }}</span>
+          <p class="text-xl font-bold font-mono mt-1 {% if macro.downside_capture < 100 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+            {{ "%.1f"|format(macro.downside_capture) }}%
+          </p>
+          <span class="text-[10px] text-zinc-400 mt-1 block">Loss absorption in SPY down-market</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Regime-Conditional Dual Betas Table & Comparison -->
+    <div class="lg:col-span-7 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{{ metric('Dual Market Betas (Bull vs Bear)', 'dual_betas') }}</div>
+        <span class="text-[10px] text-zinc-400">Benchmark: SPY</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs font-mono">
+          <thead>
+            <tr class="text-left text-[10px] text-zinc-400 uppercase border-b border-zinc-200 dark:border-zinc-800">
+              <th class="py-2 pr-3 font-sans">Market Condition</th>
+              <th class="py-2 px-3 text-right font-sans">Condition Beta</th>
+              <th class="py-2 px-3 text-right font-sans">Asymmetry vs Benchmark</th>
+              <th class="py-2 pl-3 font-sans">Interpretation</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-200/50 dark:divide-zinc-800/50">
+            {% if macro.betas %}
+            <tr>
+              <td class="py-2.5 pr-3 font-sans font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Bull Beta (Up Market)
+              </td>
+              <td class="py-2.5 px-3 text-right font-bold text-zinc-900 dark:text-zinc-50">{{ "%.2f"|format(macro.betas.get('bull_beta', 1.0)) }}</td>
+              <td class="py-2.5 px-3 text-right {% if macro.betas.get('bull_beta', 1.0) > 1.0 %}text-emerald-500{% else %}text-zinc-400{% endif %}">
+                {{ "%+.2f"|format(macro.betas.get('bull_beta', 1.0) - 1.0) }}
+              </td>
+              <td class="py-2.5 pl-3 text-zinc-500 dark:text-zinc-400 font-sans text-[11px]">
+                {% if macro.betas.get('bull_beta', 1.0) > 1.1 %}Aggressive upside leverage{% elif macro.betas.get('bull_beta', 1.0) < 0.9 %}Defensive upside lag{% else %}Market-tracking upside{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td class="py-2.5 pr-3 font-sans font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span> Bear Beta (Down Market)
+              </td>
+              <td class="py-2.5 px-3 text-right font-bold text-zinc-900 dark:text-zinc-50">{{ "%.2f"|format(macro.betas.get('bear_beta', 1.0)) }}</td>
+              <td class="py-2.5 px-3 text-right {% if macro.betas.get('bear_beta', 1.0) < 1.0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                {{ "%+.2f"|format(macro.betas.get('bear_beta', 1.0) - 1.0) }}
+              </td>
+              <td class="py-2.5 pl-3 text-zinc-500 dark:text-zinc-400 font-sans text-[11px]">
+                {% if macro.betas.get('bear_beta', 1.0) < 0.9 %}Resilient downside buffer{% elif macro.betas.get('bear_beta', 1.0) > 1.1 %}Elevated downside sensitivity{% else %}Market-parity drawdown{% endif %}
+              </td>
+            </tr>
+            {% if macro.betas.get('unconditional_beta') %}
+            <tr class="bg-zinc-100/50 dark:bg-zinc-800/20">
+              <td class="py-2 pr-3 font-sans text-zinc-500">Unconditional Beta</td>
+              <td class="py-2 px-3 text-right font-bold text-zinc-700 dark:text-zinc-300">{{ "%.2f"|format(macro.betas.get('unconditional_beta')) }}</td>
+              <td class="py-2 px-3 text-right text-zinc-400">—</td>
+              <td class="py-2 pl-3 text-zinc-400 font-sans text-[11px]">Standard linear market covariance</td>
+            </tr>
+            {% endif %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endcall %}
+{% endif %}
+
+<!-- 3. Higher-Order Greeks Surface & Variance Risk Premium (VRP) -->
+{% if inst.higher_order_greeks or inst.vrp %}
+{% call panel('Higher-Order Greeks & Volatility Risk Premium') %}
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    
+    <!-- Higher-Order Greeks Card (Vanna, Charm, Vomma) -->
+    <div class="lg:col-span-7 space-y-4">
+      <div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-2">Black-Scholes Analytical Higher-Order Greeks</div>
+      
+      <div class="grid grid-cols-3 gap-3">
+        <!-- Vanna -->
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-3.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{{ metric('Vanna', 'vanna') }}</span>
+            <span class="text-[9px] font-mono text-zinc-400">∂Δ/∂σ</span>
+          </div>
+          <p class="text-xl font-bold font-mono mt-1 text-zinc-900 dark:text-zinc-50">
+            {% if inst.higher_order_greeks %}{{ "%.4f"|format(inst.higher_order_greeks.vanna) }}{% else %}—{% endif %}
+          </p>
+          <p class="text-[10px] text-zinc-400 mt-1 leading-snug">Delta sensitivity per 1% vol shift.</p>
+        </div>
+
+        <!-- Charm -->
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-3.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{{ metric('Charm', 'charm') }}</span>
+            <span class="text-[9px] font-mono text-zinc-400">-∂Δ/∂t</span>
+          </div>
+          <p class="text-xl font-bold font-mono mt-1 text-zinc-900 dark:text-zinc-50">
+            {% if inst.higher_order_greeks %}{{ "%.4f"|format(inst.higher_order_greeks.charm) }}{% else %}—{% endif %}
+          </p>
+          <p class="text-[10px] text-zinc-400 mt-1 leading-snug">Daily delta decay over time elapsed.</p>
+        </div>
+
+        <!-- Vomma -->
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-3.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{{ metric('Vomma', 'vomma') }}</span>
+            <span class="text-[9px] font-mono text-zinc-400">∂Vega/∂σ</span>
+          </div>
+          <p class="text-xl font-bold font-mono mt-1 text-zinc-900 dark:text-zinc-50">
+            {% if inst.higher_order_greeks %}{{ "%.4f"|format(inst.higher_order_greeks.vomma) }}{% else %}—{% endif %}
+          </p>
+          <p class="text-[10px] text-zinc-400 mt-1 leading-snug">Vega convexity relative to vol shock.</p>
+        </div>
+      </div>
+
+      <!-- 1st-Order Supporting Summary -->
+      {% if inst.higher_order_greeks %}
+      <div class="rounded-lg border border-zinc-200/60 dark:border-zinc-800/60 bg-white/40 dark:bg-zinc-900/40 p-3 flex flex-wrap gap-4 justify-between font-mono text-xs">
+        <div><span class="text-zinc-400 font-sans">Delta:</span> <span class="font-semibold text-zinc-800 dark:text-zinc-200">{{ inst.higher_order_greeks.delta }}</span></div>
+        <div><span class="text-zinc-400 font-sans">Gamma:</span> <span class="font-semibold text-zinc-800 dark:text-zinc-200">{{ inst.higher_order_greeks.gamma }}</span></div>
+        <div><span class="text-zinc-400 font-sans">Vega:</span> <span class="font-semibold text-zinc-800 dark:text-zinc-200">{{ inst.higher_order_greeks.vega }}</span></div>
+        <div><span class="text-zinc-400 font-sans">Theta:</span> <span class="font-semibold text-rose-500">{{ inst.higher_order_greeks.theta }}</span></div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Variance Risk Premium (VRP) Card -->
+    {% if inst.vrp %}
+    {% set vrp = inst.vrp %}
+    <div class="lg:col-span-5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-850/40 p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{{ metric('Variance Risk Premium', 'vrp') }}</span>
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded
+            {% if vrp.vrp_spread_pct > 2 %}bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30
+            {% elif vrp.vrp_spread_pct < -2 %}bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30
+            {% else %}bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300{% endif %}">
+            {{ vrp.regime }}
+          </span>
+        </div>
+
+        <div class="mt-3 flex items-baseline gap-2">
+          <span class="text-3xl font-bold font-mono {% if vrp.vrp_spread_pct > 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+            {{ "%+.2f"|format(vrp.vrp_spread_pct) }}%
+          </span>
+          <span class="text-xs text-zinc-400">IV − HV30 Spread</span>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-2 text-xs font-mono">
+        <div class="flex justify-between">
+          <span class="text-zinc-400 font-sans">ATM Implied Volatility:</span>
+          <span class="font-bold text-zinc-900 dark:text-zinc-100">{{ "%.2f"|format(vrp.atm_implied_vol) }}%</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-zinc-400 font-sans">30D Realized Historical Vol:</span>
+          <span class="font-bold text-zinc-900 dark:text-zinc-100">{{ "%.2f"|format(vrp.realized_vol_30d) }}%</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-zinc-400 font-sans">VRP Ratio (IV / HV30):</span>
+          <span class="font-bold text-zinc-900 dark:text-zinc-100">{{ "%.2f"|format(vrp.vrp_ratio) }}x</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+{% endcall %}
+{% endif %}
+
+<!-- 4. SEC 8-K Filings & Material Corporate Event Study Table -->
+{% if inst.sec_8k_events %}
+{% call panel('SEC Form 8-K Material Events & Regulatory Filings') %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs">
+      <thead>
+        <tr class="text-[10px] text-zinc-400 uppercase border-b border-zinc-200 dark:border-zinc-800 pb-2">
+          <th class="py-2 pr-3 font-sans">{{ metric('Filing Date', 'sec_8k') }}</th>
+          <th class="py-2 px-3 font-sans">Event Items</th>
+          <th class="py-2 px-3 font-sans">Material Description</th>
+          <th class="py-2 px-3 text-center font-sans">Impact Level</th>
+          <th class="py-2 pl-3 text-right font-sans">SEC EDGAR Link</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-200/50 dark:divide-zinc-800/50">
+        {% for event in inst.sec_8k_events %}
+        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-850/50 transition-colors">
+          <td class="py-2.5 pr-3 font-mono text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
+            {{ event.filing_date }}
+          </td>
+          <td class="py-2.5 px-3">
+            <div class="flex flex-wrap gap-1">
+              {% for item in (event['items'] if event is mapping else event.items) %}
+              <span class="px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+                Item {{ item }}
+              </span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="py-2.5 px-3 max-w-md">
+            <p class="font-medium text-zinc-900 dark:text-zinc-100 truncate" title="{{ event.item_descriptions | join(', ') }}">
+              {{ event.item_descriptions | join(' · ') }}
+            </p>
+            {% if event.description %}
+            <p class="text-[11px] text-zinc-400 line-clamp-1 mt-0.5">{{ event.description }}</p>
+            {% endif %}
+          </td>
+          <td class="py-2.5 px-3 text-center whitespace-nowrap">
+            {% if event.is_high_impact %}
+            <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+              High Materiality
+            </span>
+            {% else %}
+            <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+              Routine 8-K
+            </span>
+            {% endif %}
+          </td>
+          <td class="py-2.5 pl-3 text-right whitespace-nowrap">
+            {% if event.primary_doc_url %}
+            <a href="{{ event.primary_doc_url }}" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors">
+              <span>EDGAR Doc</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+            {% else %}
+            <span class="text-zinc-400">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endcall %}
+{% endif %}
+
+{% endif %}

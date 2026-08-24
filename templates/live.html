@@ -88,10 +88,22 @@
       </form>
       {% endif %}
       
-      <!-- WebSocket / Simulation Status Indicator -->
-      <div id="connection-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-        <span class="w-2 h-2 rounded-full bg-zinc-400 animate-pulse"></span>
-        <span id="connection-status-text">Disconnected</span>
+      <!-- WebSocket / Live / Simulation Status Controls -->
+      <div class="flex items-center gap-2">
+        <button 
+          id="sim-feed-toggle-btn"
+          onclick="toggleSimulationFeed()" 
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          title="Toggle synthetic order flow simulation during closed market hours"
+        >
+          <span id="sim-toggle-dot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
+          <span id="sim-toggle-text">Simulated Feed: Off</span>
+        </button>
+
+        <div id="connection-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+          <span class="w-2 h-2 rounded-full bg-zinc-400 animate-pulse"></span>
+          <span id="connection-status-text">Live Direct</span>
+        </div>
       </div>
     </div>
   </div>
@@ -441,6 +453,9 @@
               <button onclick="switchGreeksChart('gamma')" id="chart-tab-gamma" title="{{ GLOSSARY.gamma.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Gamma</button>
               <button onclick="switchGreeksChart('iv')" id="chart-tab-iv" title="{{ GLOSSARY.iv_smile.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Smile</button>
               <button onclick="switchGreeksChart('gex')" id="chart-tab-gex" title="{{ GLOSSARY.gex.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">GEX</button>
+              <button onclick="switchGreeksChart('vanna')" id="chart-tab-vanna" title="{{ GLOSSARY.vanna.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Vanna</button>
+              <button onclick="switchGreeksChart('charm')" id="chart-tab-charm" title="{{ GLOSSARY.charm.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Charm</button>
+              <button onclick="switchGreeksChart('vomma')" id="chart-tab-vomma" title="{{ GLOSSARY.vomma.short }}" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Vomma</button>
               <button onclick="switchGreeksChart('voloi')" id="chart-tab-voloi" title="Open Interest & Volume by strike" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">Vol/OI</button>
               <button onclick="switchGreeksChart('pctchg')" id="chart-tab-pctchg" title="Daily P/L % by strike" class="px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400">P/L %</button>
             </div>
@@ -1005,27 +1020,55 @@
     post: 'After-Hours'
   };
 
-  // Show/hide the market-hours notice under the tab bar. Visible only while
-  // the simulated feed is running, with wording matched to the current session.
+  let simulationEnabled = false;
+
+  function toggleSimulationFeed() {
+    simulationEnabled = !simulationEnabled;
+    const btn = document.getElementById('sim-feed-toggle-btn');
+    const dot = document.getElementById('sim-toggle-dot');
+    const text = document.getElementById('sim-toggle-text');
+
+    if (simulationEnabled) {
+      if (btn) btn.className = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+      if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-500 animate-pulse";
+      if (text) text.innerText = `Simulated Feed: ON (${SESSION_LABELS[getMarketSession()]})`;
+      startSimulation();
+    } else {
+      if (btn) btn.className = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300";
+      if (dot) dot.className = "w-2 h-2 rounded-full bg-zinc-400";
+      if (text) text.innerText = "Simulated Feed: Off";
+      stopSimulation();
+      connectWebSocket();
+    }
+  }
+
+  function stopSimulation() {
+    if (simInterval) {
+      clearInterval(simInterval);
+      simInterval = null;
+    }
+  }
+
+  // Show/hide the market-hours notice under the tab bar.
   function updateSimNotice() {
     const notice = document.getElementById('sim-hours-notice');
     const textEl = document.getElementById('sim-hours-notice-text');
     if (!notice || !textEl) return;
 
-    if (currentStatus !== 'simulated') {
+    if (!simulationEnabled) {
       notice.classList.add('hidden');
       return;
     }
 
     const session = getMarketSession();
     if (session === 'closed') {
-      textEl.innerText = 'Simulated feed — synthetic ticks are shown only during non-market hours. The U.S. market is closed right now (overnight/weekend). Live streaming resumes automatically when pre-market opens at 4:00 AM ET.';
+      textEl.innerText = 'Simulated feed active (Market Closed). Real pre-market begins at 4:00 AM ET.';
     } else if (session === 'pre') {
-      textEl.innerText = 'Simulated feed — synthetic ticks are shown only while live data is unavailable. It is currently pre-market (4:00–9:30 AM ET); live extended-hours streaming requires a working Finnhub connection.';
+      textEl.innerText = 'Simulated feed active during Pre-Market (4:00–9:30 AM ET). Toggle off to watch live streaming trades.';
     } else if (session === 'post') {
-      textEl.innerText = 'Simulated feed — synthetic ticks are shown only while live data is unavailable. It is currently after-hours (4:00–8:00 PM ET); live extended-hours streaming requires a working Finnhub connection.';
+      textEl.innerText = 'Simulated feed active during After-Hours (4:00–8:00 PM ET). Toggle off to watch live streaming trades.';
     } else {
-      textEl.innerText = 'Simulated feed — the market is open (9:30 AM–4:00 PM ET) but the live websocket is unavailable (missing FINNHUB_API_KEY or connection error), so synthetic ticks are shown instead.';
+      textEl.innerText = 'Simulated feed active. Real market is open (9:30 AM–4:00 PM ET).';
     }
     notice.classList.remove('hidden');
   }
@@ -1040,16 +1083,16 @@
 
     if (status === 'connected') {
       badge.classList.add('bg-emerald-500/10', 'text-emerald-600', 'dark:text-emerald-400');
-      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> <span>Live WebSocket</span>`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> <span>Live WebSocket (${SESSION_LABELS[getMarketSession()]})</span>`;
     } else if (status === 'simulated') {
       badge.classList.add('bg-amber-500/10', 'text-amber-600', 'dark:text-amber-400');
-      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> <span>Simulated Feed · ${SESSION_LABELS[getMarketSession()]}</span>`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span> <span>Simulated · ${SESSION_LABELS[getMarketSession()]}</span>`;
     } else if (status === 'error') {
       badge.classList.add('bg-rose-500/10', 'text-rose-600', 'dark:text-rose-400');
-      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span> <span>WS Error</span>`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span> <span>WS Offline (${SESSION_LABELS[getMarketSession()]})</span>`;
     } else {
       badge.classList.add('bg-zinc-100', 'dark:bg-zinc-800', 'text-zinc-600', 'dark:text-zinc-400');
-      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-zinc-400"></span> <span>Disconnected</span>`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-zinc-400"></span> <span>Live Direct · ${SESSION_LABELS[getMarketSession()]}</span>`;
     }
 
     updateSimNotice();
@@ -1058,23 +1101,15 @@
   // WebSocket Connection
   function connectWebSocket() {
     if (socket) {
-      // Detach the close handler so the dying socket can't spawn a second simulator
       socket.onclose = null;
       socket.close();
       socket = null;
     }
-    if (simInterval) { clearInterval(simInterval); simInterval = null; }
+    stopSimulation();
     startSessionWatcher();
 
     if (!hasKey) {
-      startSimulation();
-      return;
-    }
-
-    // Overnight/weekend (e.g. 1 AM ET) no trades stream at all — don't hold a
-    // silent socket; simulate, and the session watcher goes live at 4:00 AM ET.
-    if (getMarketSession() === 'closed') {
-      startSimulation();
+      updateStatus('disconnected');
       return;
     }
 
@@ -1104,30 +1139,25 @@
     
     socket.onclose = function() {
       updateStatus('disconnected');
-      console.log("WebSocket closed. Falling back to local simulator.");
-      startSimulation();
+      if (simulationEnabled) {
+        startSimulation();
+      }
     };
   }
 
-  // Re-evaluate the ET session every minute: refresh the notice/badge wording,
-  // and if the market (re)opened while simulating with a key available, go live.
-  // Conversely, when the session ends (8:00 PM ET) the live socket goes quiet on
-  // its own and falls back to the simulator via onclose — no action needed here.
   function startSessionWatcher() {
     if (marketSessionInterval) return;
     marketSessionInterval = setInterval(() => {
-      if (currentStatus === 'simulated') {
-        updateStatus('simulated');  // refreshes badge session tag + notice text
-        if (hasKey && getMarketSession() !== 'closed') {
-          connectWebSocket();
-        }
+      if (currentStatus !== 'simulated' && hasKey) {
+        updateStatus(socket && socket.readyState === WebSocket.OPEN ? 'connected' : 'disconnected');
       }
     }, 60000);
   }
 
-  // Local Microstructure Simulation Mode
+  // Local Microstructure Simulation Mode (Only when simulationEnabled == true)
   function startSimulation() {
-    if (simInterval) clearInterval(simInterval);
+    stopSimulation();
+    if (!simulationEnabled) return;
     updateStatus('simulated');
 
     let tickCount = 0;
@@ -1845,13 +1875,15 @@
   function switchGreeksChart(type) {
     currentGreeksChart = type;
     
-    const tabs = ['delta', 'gamma', 'iv', 'gex', 'voloi', 'pctchg'];
+    const tabs = ['delta', 'gamma', 'iv', 'gex', 'vanna', 'charm', 'vomma', 'voloi', 'pctchg'];
     tabs.forEach(t => {
       const btn = document.getElementById(`chart-tab-${t}`);
-      if (t === type) {
-        btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500";
-      } else {
-        btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400";
+      if (btn) {
+        if (t === type) {
+          btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md bg-white dark:bg-zinc-700 shadow-sm text-amber-500";
+        } else {
+          btn.className = "px-2 py-0.5 text-[10px] font-bold rounded-md text-zinc-500 dark:text-zinc-400";
+        }
       }
     });
     
@@ -1864,6 +1896,8 @@
     const strikes = optionsData.options.map(o => o.strike);
     const isDark = document.documentElement.classList.contains('dark');
     const spot = optionsData.spot_price;
+    const t_years = Math.max(1e-5, (optionsData.days_to_expiration || 30) / 365.0);
+    const rf_rate = parseFloat(document.getElementById('rf-rate-input') ? document.getElementById('rf-rate-input').value : '0.045') || 0.045;
     
     let traces = [];
     let extraShapes = [];
@@ -1928,6 +1962,82 @@
           mode: 'lines+markers',
           line: { color: '#a78bfa', width: 2 },
           marker: { size: 4 }
+        }
+      ];
+    } else if (currentGreeksChart === 'vanna') {
+      // Vanna = -pdf(d1) * d2 / vol  (per 1% vol change)
+      const vannas = optionsData.options.map(o => {
+        const iv = Math.max(o.call_iv, o.put_iv) / 100.0;
+        if (iv <= 0.001) return 0;
+        const k = o.strike;
+        const d1 = (Math.log(spot / k) + (rf_rate + 0.5 * iv * iv) * t_years) / (iv * Math.sqrt(t_years));
+        const d2 = d1 - iv * Math.sqrt(t_years);
+        const pdf_d1 = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2.0 * Math.PI);
+        return (-pdf_d1 * d2 / iv) / 100.0;
+      });
+      traces = [
+        {
+          x: strikes,
+          y: vannas,
+          name: 'Vanna (dDelta / dVol)',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#06b6d4', width: 2 },
+          marker: { size: 4 },
+          fill: 'tozeroy',
+          fillcolor: 'rgba(6, 182, 212, 0.1)'
+        }
+      ];
+    } else if (currentGreeksChart === 'charm') {
+      // Charm = Delta decay per day
+      const charms = optionsData.options.map(o => {
+        const iv = Math.max(o.call_iv, o.put_iv) / 100.0;
+        if (iv <= 0.001) return 0;
+        const k = o.strike;
+        const t_sqrt = Math.sqrt(t_years);
+        const d1 = (Math.log(spot / k) + (rf_rate + 0.5 * iv * iv) * t_years) / (iv * t_sqrt);
+        const d2 = d1 - iv * t_sqrt;
+        const pdf_d1 = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2.0 * Math.PI);
+        const charm_annual = pdf_d1 * ((2.0 * rf_rate * t_years - d2 * iv * t_sqrt) / (2.0 * t_years * iv * t_sqrt));
+        return -charm_annual / 365.0;
+      });
+      traces = [
+        {
+          x: strikes,
+          y: charms,
+          name: 'Charm (dDelta / dTime)',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#8b5cf6', width: 2 },
+          marker: { size: 4 },
+          fill: 'tozeroy',
+          fillcolor: 'rgba(139, 92, 246, 0.1)'
+        }
+      ];
+    } else if (currentGreeksChart === 'vomma') {
+      // Vomma = Vega * d1 * d2 / vol  (dVega / dVol)
+      const vommas = optionsData.options.map(o => {
+        const iv = Math.max(o.call_iv, o.put_iv) / 100.0;
+        if (iv <= 0.001) return 0;
+        const k = o.strike;
+        const t_sqrt = Math.sqrt(t_years);
+        const d1 = (Math.log(spot / k) + (rf_rate + 0.5 * iv * iv) * t_years) / (iv * t_sqrt);
+        const d2 = d1 - iv * t_sqrt;
+        const pdf_d1 = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2.0 * Math.PI);
+        const vega = spot * pdf_d1 * t_sqrt;
+        return (vega * d1 * d2 / iv) / 10000.0;
+      });
+      traces = [
+        {
+          x: strikes,
+          y: vommas,
+          name: 'Vomma (dVega / dVol)',
+          type: 'scatter',
+          mode: 'lines+markers',
+          line: { color: '#ec4899', width: 2 },
+          marker: { size: 4 },
+          fill: 'tozeroy',
+          fillcolor: 'rgba(236, 72, 153, 0.1)'
         }
       ];
     } else if (currentGreeksChart === 'gex') {

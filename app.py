@@ -22,6 +22,14 @@ import s3_cache
 import providers
 import ml
 import ai
+import corporate_actions
+import event_study
+import sec_8k
+import microstructure
+import macro_engine
+import derivatives_alpha
+import backtest_engine
+import api_docs
 from glossary import GLOSSARY
 
 # --- yfinance custom session with browser headers to prevent Cloud IP blocking ---
@@ -187,22 +195,24 @@ def calculate_date_periods():
     return periods
 
 def get_current_price_yfinance(ticker, retries=3):
-    """Get current price using yfinance with retry logic"""
+    """Get current price using yfinance with retry logic and extended hours (pre-market 4am / after-hours)."""
     for attempt in range(retries):
         try:
             stock = _get_yf_ticker(ticker)
-            # Use shorter period for faster response, retry with longer if needed
+            # Try fetching with prepost=True to capture extended hours prices (4:00 AM - 8:00 PM EST)
+            hist = stock.history(period="1d", interval="1m", prepost=True)
+            if not hist.empty:
+                return float(hist['Close'].iloc[-1])
+
+            # Fallback to standard 1d/5d history
             hist = stock.history(period="1d")
-            
             if hist.empty and attempt < retries - 1:
-                # Try with longer period on retry
                 time.sleep(0.5)
                 hist = stock.history(period="5d")
             
             if not hist.empty:
                 return float(hist['Close'].iloc[-1])
             
-            # If empty, wait and retry
             if attempt < retries - 1:
                 time.sleep(1)
                 
@@ -529,6 +539,18 @@ def index():
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+@app.route('/api/openapi.json')
+def openapi_json():
+    """Return raw OpenAPI 3.0.3 schema specification."""
+    return jsonify(api_docs.get_openapi_spec())
+
+
+@app.route('/api/docs')
+def swagger_ui():
+    """Interactive Swagger UI API Documentation explorer."""
+    return api_docs.get_swagger_ui_html(openapi_json_url="/api/openapi.json")
 
 
 @app.route('/glossary')
@@ -2018,6 +2040,52 @@ def analytics_page():
     # Machine-learning Buy/Hold/Sell signal (None until a model is trained)
     data['ml'] = ml.predict(ticker)
 
+    # Attach Institutional Analytics Suite (Microstructure, Macro Conditioning, Higher-Order Greeks, 8-K)
+    try:
+        spy_df = get_or_fetch_prices("SPY", period="2y")
+        stock_inst_df = price_df if price_df is not None else get_or_fetch_prices(ticker, period="2y")
+        if stock_inst_df is not None and not stock_inst_df.empty:
+            micro_res = microstructure.get_microstructure_analytics(stock_inst_df)
+            macro_res = macro_engine.get_macro_financial_report(stock_inst_df, spy_df if spy_df is not None else stock_inst_df)
+            events_8k = sec_8k.fetch_and_parse_8k_filings(ticker, limit=5)
+            
+            # Higher-order Greeks & VRP
+            atm_iv = (data['gex']['spot'] * 0.01) if (data.get('gex') and data['gex'].get('spot')) else 0.25
+            spot_p = data.get('current_price', 100.0)
+            ann_vol = (data.get('stats', {}).get('annualised_vol') or 25.0) / 100.0
+            hog = derivatives_alpha.compute_higher_order_greeks(
+                spot=spot_p,
+                strike=spot_p,
+                time_to_exp=30.0 / 365.0,
+                volatility=max(ann_vol, 0.05),
+                risk_free_rate=0.045,
+                is_call=True
+            )
+            vrp_res = derivatives_alpha.calculate_variance_risk_premium(
+                atm_implied_vol=max(ann_vol * 1.05, 0.05),
+                realized_vol_30d=max(ann_vol, 0.05)
+            )
+
+            data['institutional'] = {
+                'microstructure': micro_res.__dict__,
+                'macro_conditioning': {
+                    'regime': macro_res.current_regime,
+                    'fed_funds_rate': macro_res.fed_funds_rate,
+                    'yield_curve_2s10s': macro_res.yield_curve_2s10s_spread,
+                    'is_inverted': macro_res.is_yield_curve_inverted,
+                    'cpi_yoy': macro_res.cpi_inflation_yoy,
+                    'betas': macro_res.regime_conditional_betas,
+                    'upside_capture': macro_res.upside_capture_ratio,
+                    'downside_capture': macro_res.downside_capture_ratio,
+                },
+                'higher_order_greeks': hog.__dict__,
+                'vrp': vrp_res,
+                'sec_8k_events': [e.__dict__ for e in events_8k],
+            }
+    except Exception as e:
+        print(f"Error computing institutional analytics for {ticker}: {e}")
+        data['institutional'] = None
+
     # AI analyst report — reads everything above, including the ML signal
     ai_report_html = ai.generate_report(ticker, data)
     data['ai_report'] = ai_report_html
@@ -2099,7 +2167,7 @@ def compute_positioning(ticker: str) -> dict:
         'valuation':       lambda: providers.finnhub_metrics(symbol),
         'recommendations': lambda: providers.finnhub_recommendations(symbol),
         'sentiment':       lambda: providers.finnhub_insider_sentiment(symbol),
-        'transactions':    lambda: providers.finnhub_insider_transactions(symbol),
+        'transactions':    lambda: providers.get_insider_transactions(symbol),
         'sec_filings':     lambda: providers.sec_recent_filings(symbol, forms=("3", "4", "5")),
         'holders':         lambda: providers.fmp_institutional_holders(symbol),
         'sec_13f':         lambda: providers.sec_recent_filings(symbol, forms=("13F-HR", "13F-HR/A")),
@@ -3554,6 +3622,83 @@ def api_warm_cache():
         return jsonify({"error": "unauthorized"}), 403
     _warm_options_cache(force=True)
     return jsonify({"status": "accepted", "detail": "EOD options cache warm started in background"}), 202
+
+
+@app.route('/api/corporate-actions/<ticker>')
+def api_corporate_actions(ticker):
+    """Expose point-in-time identity and corporate action history for a ticker."""
+    as_of = request.args.get('as_of')
+    entity = corporate_actions.engine.resolve_entity_as_of(ticker, as_of_date=as_of)
+    if not entity:
+        return jsonify({"ticker": ticker.upper(), "entity": None, "actions": []}), 200
+
+    actions = corporate_actions.engine.get_corporate_actions_for_entity(entity.entity_id)
+    history = corporate_actions.engine.get_symbol_history(entity.entity_id)
+
+    return jsonify({
+        "ticker": ticker.upper(),
+        "entity": {
+            "entity_id": entity.entity_id,
+            "cik": entity.cik,
+            "figi": entity.figi,
+            "cusip": entity.cusip,
+            "legal_name": entity.legal_name,
+        },
+        "symbol_timeline": history,
+        "actions": [
+            {
+                "action_id": a.action_id,
+                "action_type": a.action_type.value,
+                "effective_date": a.effective_date,
+                "announcement_date": a.announcement_date,
+                "ratio": a.ratio,
+                "old_value": a.old_value,
+                "new_value": a.new_value,
+                "status": a.status,
+            }
+            for a in actions
+        ],
+    }), 200
+
+
+@app.route('/api/institutional/<ticker>')
+def api_institutional(ticker):
+    """Institutional quantitative analytics suite: Microstructure, Macro, CAR, and Greeks."""
+    ticker = ticker.upper()
+    stock_df = get_or_fetch_prices(ticker, period="2y")
+    spy_df = get_or_fetch_prices("SPY", period="2y")
+
+    if stock_df is None or stock_df.empty:
+        return jsonify({"error": f"No pricing data for {ticker}"}), 404
+
+    # 1. Microstructure & Squeeze
+    micro_res = microstructure.get_microstructure_analytics(stock_df)
+
+    # 2. Macro Conditioning
+    macro_res = macro_engine.get_macro_financial_report(stock_df, spy_df if spy_df is not None else stock_df)
+
+    # 3. Signals Walk-Forward Simulation
+    sim_res, _ = backtest_engine.run_signals_backtest(stock_df)
+
+    # 4. Recent SEC 8-K Events
+    events_8k = sec_8k.fetch_and_parse_8k_filings(ticker, limit=5)
+
+    return jsonify({
+        "ticker": ticker,
+        "microstructure": micro_res.__dict__,
+        "macro_conditioning": {
+            "regime": macro_res.current_regime,
+            "fed_funds_rate": macro_res.fed_funds_rate,
+            "yield_curve_2s10s": macro_res.yield_curve_2s10s_spread,
+            "is_inverted": macro_res.is_yield_curve_inverted,
+            "cpi_yoy": macro_res.cpi_inflation_yoy,
+            "betas": macro_res.regime_conditional_betas,
+            "upside_capture": macro_res.upside_capture_ratio,
+            "downside_capture": macro_res.downside_capture_ratio,
+        },
+        "signals_backtest": sim_res.__dict__,
+        "sec_8k_events": [e.__dict__ for e in events_8k],
+    }), 200
 
 
 @app.route('/api/active-tickers')
