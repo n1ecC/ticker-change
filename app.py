@@ -166,17 +166,44 @@ def get_or_fetch_prices(symbol: str, period: str = "5y") -> pd.DataFrame | None:
 
     return result
 
+SHORT_DAY_PERIODS = {'1D': 1, '2D': 2, '3D': 3, '4D': 4, '5D': 5}
+
+
+def _is_weekend(d=None):
+    d = d or datetime.now()
+    return d.weekday() >= 5
+
+
+def _close_n_sessions_ago(df, n_sessions, *, live_mode=False):
+    """Return the close from n trading sessions before the current reference point.
+
+    When live_mode is False the current price is the latest daily bar, so 1D uses
+    iloc[-2] (prior session). When live_mode is True the current price may be
+    ahead of the latest bar (e.g. Monday pre-market with Friday's last bar), so
+    1D uses iloc[-1] as yesterday's close.
+    """
+    if df is None or df.empty or n_sessions <= 0:
+        return None
+
+    latest_bar = pd.to_datetime(df.index[-1]).normalize()
+    today = pd.Timestamp.now().normalize()
+
+    if live_mode and latest_bar < today:
+        hist_idx = -n_sessions
+    else:
+        hist_idx = -(n_sessions + 1)
+
+    if len(df) < abs(hist_idx):
+        return None
+    return float(df['close'].iloc[hist_idx])
+
+
 def calculate_date_periods():
-    """Calculate the date periods for comparison"""
+    """Calculate the date periods for comparison (calendar-based; 1D–5D handled separately)."""
     today = datetime.now()
     
     # include a richer set of short-term periods: days 1-5 and weeks 1-4
     periods = {
-        '1D': today - timedelta(days=1),
-        '2D': today - timedelta(days=2),
-        '3D': today - timedelta(days=3),
-        '4D': today - timedelta(days=4),
-        '5D': today - timedelta(days=5),
         '1W': today - timedelta(weeks=1),
         '2W': today - timedelta(weeks=2),
         '3W': today - timedelta(weeks=3),
@@ -478,6 +505,33 @@ def get_chart_data_json(ticker, start_date=None, end_date=None):
         }
     }
 
+def _append_period_change(percentage_data, net_change_data, period_name, current_price, historical_price):
+    if historical_price and not np.isnan(historical_price) and historical_price != 0:
+        net_change = current_price - historical_price
+        pct_change = ((current_price - historical_price) / historical_price) * 100
+        percentage_data.append({
+            "period": period_name,
+            "value": round(pct_change, 2),
+            "raw_value": pct_change,
+            "is_positive": pct_change > 0,
+        })
+        net_change_data.append({
+            "period": period_name,
+            "value": round(net_change, 2),
+            "raw_value": net_change,
+            "is_positive": net_change > 0,
+        })
+    else:
+        percentage_data.append({"period": period_name, "value": "N/A"})
+        net_change_data.append({"period": period_name, "value": "N/A"})
+
+
+def _append_weekend_placeholder(percentage_data, net_change_data, period_name):
+    row = {"period": period_name, "value": "-", "is_weekend": True}
+    percentage_data.append(row)
+    net_change_data.append(row.copy())
+
+
 def get_stock_data(ticker):
     """Get all stock data for web display, using the DB as the single data source."""
     if not ticker:
@@ -487,13 +541,29 @@ def get_stock_data(ticker):
     if df is None or df.empty:
         return {"error": f"Could not retrieve data for {ticker}"}
 
-    current_price = float(df['close'].iloc[-1])
+    db_latest_close = float(df['close'].iloc[-1])
+    live_price = get_current_price_yfinance(ticker)
+    live_mode = live_price is not None and not _is_weekend()
+    current_price = live_price if live_mode else db_latest_close
     periods = calculate_date_periods()
+    today_is_weekend = _is_weekend()
 
     percentage_data = [{"period": "Current Price", "value": f"${current_price:.2f}"}]
     net_change_data = [{"period": "Current Price", "value": f"${current_price:.2f}"}]
 
-    for period_name, target_date in periods.items():
+    for period_name in list(SHORT_DAY_PERIODS.keys()) + list(periods.keys()):
+        if period_name in SHORT_DAY_PERIODS:
+            if today_is_weekend:
+                _append_weekend_placeholder(percentage_data, net_change_data, period_name)
+                continue
+            n_sessions = SHORT_DAY_PERIODS[period_name]
+            historical_price = _close_n_sessions_ago(df, n_sessions, live_mode=live_mode)
+            _append_period_change(
+                percentage_data, net_change_data, period_name, current_price, historical_price
+            )
+            continue
+
+        target_date = periods[period_name]
         target_ts = pd.to_datetime(target_date).tz_localize(None)
         valid = df[df.index <= target_ts]
         if valid.empty:
@@ -501,24 +571,12 @@ def get_stock_data(ticker):
         else:
             historical_price = float(valid['close'].iloc[-1])
 
-        if historical_price and not np.isnan(historical_price) and historical_price != 0:
-            net_change = current_price - historical_price
-            pct_change = ((current_price - historical_price) / historical_price) * 100
-            percentage_data.append({
-                "period": period_name,
-                "value": round(pct_change, 2),
-                "raw_value": pct_change,
-                "is_positive": pct_change > 0,
-            })
-            net_change_data.append({
-                "period": period_name,
-                "value": round(net_change, 2),
-                "raw_value": net_change,
-                "is_positive": net_change > 0,
-            })
+        if _is_weekend(target_date):
+            _append_weekend_placeholder(percentage_data, net_change_data, period_name)
         else:
-            percentage_data.append({"period": period_name, "value": "N/A"})
-            net_change_data.append({"period": period_name, "value": "N/A"})
+            _append_period_change(
+                percentage_data, net_change_data, period_name, current_price, historical_price
+            )
 
     chart_result = generate_stock_chart(ticker)
     return {
