@@ -52,7 +52,68 @@ def init_db():
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS watchlist (
+                symbol     TEXT PRIMARY KEY,
+                trade_type TEXT NOT NULL DEFAULT 'long_stock',
+                note       TEXT,
+                added_at   DATETIME NOT NULL
+            );
         """)
+
+
+WATCHLIST_MAX = 25
+WATCHLIST_TRADE_TYPES = frozenset({"long_stock", "long_call", "short_put", "other"})
+
+
+def watchlist_list() -> list[sqlite3.Row]:
+    """Return watchlist rows ordered by most recently added."""
+    try:
+        with get_conn() as conn:
+            return conn.execute(
+                "SELECT symbol, trade_type, note, added_at FROM watchlist "
+                "ORDER BY added_at DESC"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+
+
+def watchlist_add(symbol: str, trade_type: str = "long_stock", note: str = "") -> tuple[bool, str]:
+    """Add or update a watchlist symbol. Returns (ok, message)."""
+    symbol = symbol.strip().upper()
+    if not symbol:
+        return False, "Ticker is required"
+    if trade_type not in WATCHLIST_TRADE_TYPES:
+        trade_type = "long_stock"
+    note = (note or "").strip()[:200]
+    try:
+        with get_conn() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+            existing = conn.execute(
+                "SELECT 1 FROM watchlist WHERE symbol = ?", (symbol,)
+            ).fetchone()
+            if not existing and count >= WATCHLIST_MAX:
+                return False, f"Watchlist full ({WATCHLIST_MAX} symbols max)"
+            conn.execute(
+                "INSERT OR REPLACE INTO watchlist (symbol, trade_type, note, added_at) "
+                "VALUES (?, ?, ?, ?)",
+                (symbol, trade_type, note, datetime.utcnow().isoformat()),
+            )
+    except sqlite3.OperationalError:
+        return False, "Watchlist table unavailable"
+    return True, symbol
+
+
+def watchlist_remove(symbol: str) -> bool:
+    symbol = symbol.strip().upper()
+    if not symbol:
+        return False
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("DELETE FROM watchlist WHERE symbol = ?", (symbol,))
+            return cur.rowcount > 0
+    except sqlite3.OperationalError:
+        return False
 
 
 def get_setting(key: str, default: str = "") -> str:
