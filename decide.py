@@ -291,8 +291,10 @@ def build_checklist(
             st, reason = "pass", f"Rank #{rank} of {universe_size} (top half)"
         elif pct >= 0.90:
             st, reason = "fail", f"Rank #{rank} of {universe_size} (bottom decile)"
+        elif pct >= 0.75:
+            st, reason = "warn", f"Rank #{rank} of {universe_size} (bottom quartile)"
         else:
-            st, reason = "warn", f"Rank #{rank} of {universe_size} (lower quartile+)"
+            st, reason = "pass", f"Rank #{rank} of {universe_size}"
         checks.append(_check_row("momentum", "Momentum", st, reason))
     else:
         checks.append(_check_row("momentum", "Momentum", "skip", "Not in cached universe"))

@@ -210,6 +210,8 @@ JSON twins of every view, plus health and config:
 
 | Endpoint | Returns |
 | --- | --- |
+| `GET /api/morning` | Watchlist scan with alert flags |
+| `GET /api/checklist/<ticker>` | Pre-trade checklist (`?trade_type=long_stock`) |
 | `GET /api/stock/<ticker>` | Price, period changes, chart metadata |
 | `GET /api/analytics/<ticker>` | Risk stats and metrics |
 | `GET /api/positioning/<ticker>` | Valuation, insider, institutional data |
@@ -257,6 +259,7 @@ Fly.io mounts a persistent volume at `/data` for `stocks.db`. Also ships with
 ## Project structure
 
 ```
+decide.py         Morning scan flags and pre-trade checklist
 app.py          Routes, analytics, charts, options pricing, momentum backtest
 providers.py    Finnhub / FMP / SEC / AI clients (fail gracefully)
 db.py           SQLite: prices, api_cache, settings
