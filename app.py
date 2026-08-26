@@ -2,7 +2,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
@@ -30,6 +30,7 @@ import macro_engine
 import derivatives_alpha
 import backtest_engine
 import api_docs
+import decide
 from glossary import GLOSSARY
 
 # --- yfinance custom session with browser headers to prevent Cloud IP blocking ---
@@ -592,6 +593,39 @@ def get_stock_data(ticker):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/morning', methods=['GET', 'POST'])
+def morning_page():
+    if request.method == 'POST':
+        symbol = request.form.get('symbol', '')
+        trade_type = request.form.get('trade_type', 'long_stock')
+        note = request.form.get('note', '')
+        ok, msg = db.watchlist_add(symbol, trade_type=trade_type, note=note)
+        if ok:
+            return redirect(url_for('morning_page', msg=f'Added {msg}'))
+        return redirect(url_for('morning_page', error=msg))
+    snapshots = decide.build_morning_scan()
+    flagged = sum(1 for s in snapshots if s.get('flags'))
+    return render_template(
+        'morning.html',
+        snapshots=snapshots,
+        flagged_count=flagged,
+        message=request.args.get('msg'),
+        error=request.args.get('error'),
+    )
+
+
+@app.route('/morning/remove', methods=['POST'])
+def morning_remove():
+    symbol = request.form.get('symbol', '')
+    db.watchlist_remove(symbol)
+    return redirect(url_for('morning_page', msg=f'Removed {symbol.upper()}' if symbol else None))
+
+
+@app.route('/api/morning')
+def morning_api():
+    return jsonify({"snapshots": decide.build_morning_scan()})
 
 
 @app.route('/health')

@@ -225,6 +225,7 @@
               <span class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">ticker<span class="text-amber-500">/</span>change</span>
             </a>
             <div class="hidden md:flex items-center gap-6">
+              <a id="nav-morning" href="/morning" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Morning</a>
               <a id="nav-analytics" href="/analytics" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Analytics</a>
               <a id="nav-live" href="/live" class="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors font-medium">Live Microstructure</a>
               <a id="nav-apidocs" href="/api/docs" class="text-sm text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold transition-colors">API Docs (Swagger)</a>
@@ -268,6 +269,7 @@
         </div>
         <div id="mobile-nav-menu" class="hidden md:hidden border-t border-zinc-200 dark:border-zinc-800 py-3">
           <div class="grid grid-cols-2 gap-2">
+            <a id="mobile-nav-morning" href="/morning" class="mobile-nav-link">Morning</a>
             <a id="mobile-nav-analytics" href="/analytics" class="mobile-nav-link">Analytics</a>
             <a id="mobile-nav-live" href="/live" class="mobile-nav-link">Live Market</a>
             <a id="mobile-nav-apidocs" href="/api/docs" class="mobile-nav-link text-amber-600 dark:text-amber-400 font-semibold">API Docs</a>
@@ -404,6 +406,7 @@
         }
         const ticker = urlTicker || localStorage.getItem('last_ticker');
         if (!ticker) return;
+        if (window.location.pathname === '/morning') return;
 
         // Configure main nav links
         const links = {
