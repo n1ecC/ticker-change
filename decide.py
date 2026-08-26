@@ -4,7 +4,6 @@ Repackages existing app metrics into pass/warn/fail flags — no new indicators.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import db
@@ -53,7 +52,7 @@ def days_until_earnings(fundamentals: dict | None) -> int | None:
         return None
 
 
-def price_changes(ticker: str) -> dict:
+def price_changes(ticker: str, *, fast: bool = False) -> dict:
     """Lightweight 1D / 5D % change without chart generation."""
     from app import (
         _close_n_sessions_ago,
@@ -63,11 +62,11 @@ def price_changes(ticker: str) -> dict:
     )
 
     ticker = ticker.upper()
-    df = get_or_fetch_prices(ticker)
+    df = db.get_prices(ticker) if fast else get_or_fetch_prices(ticker)
     if df is None or df.empty:
         return {"pct_1d": None, "pct_5d": None}
 
-    live = get_current_price_yfinance(ticker)
+    live = None if fast else get_current_price_yfinance(ticker)
     live_mode = live is not None and not _is_weekend()
     current = live if live_mode else float(df["close"].iloc[-1])
 
@@ -101,32 +100,46 @@ def _build_flags(
     ranks: dict[str, int],
     universe_size: int,
     current_price: float | None,
+    *,
+    fast: bool = False,
 ) -> list[dict]:
-    from app import compute_options_analysis, get_fundamentals, get_insider_summary
-
     flags: list[dict] = []
-    fundamentals = get_fundamentals(ticker)
 
-    earn_days = days_until_earnings(fundamentals)
-    if earn_days is not None and earn_days <= 5:
-        sev = "fail" if earn_days <= 2 else "warn"
-        flags.append({
-            "code": "EARNINGS",
-            "label": f"Earnings in {earn_days}d",
-            "severity": sev,
-        })
+    if not fast:
+        from app import compute_options_analysis, get_fundamentals, get_insider_summary
 
-    try:
-        opts = compute_options_analysis(ticker)
-        iv_rank = opts.get("iv_rank") if opts else None
-        if iv_rank is not None and iv_rank > 70:
+        fundamentals = get_fundamentals(ticker)
+        earn_days = days_until_earnings(fundamentals)
+        if earn_days is not None and earn_days <= 5:
+            sev = "fail" if earn_days <= 2 else "warn"
             flags.append({
-                "code": "IV_HIGH",
-                "label": f"IV rank {iv_rank:.0f}",
-                "severity": "warn",
+                "code": "EARNINGS",
+                "label": f"Earnings in {earn_days}d",
+                "severity": sev,
             })
-    except Exception:
-        pass
+
+        try:
+            opts = compute_options_analysis(ticker)
+            iv_rank = opts.get("iv_rank") if opts else None
+            if iv_rank is not None and iv_rank > 70:
+                flags.append({
+                    "code": "IV_HIGH",
+                    "label": f"IV rank {iv_rank:.0f}",
+                    "severity": "warn",
+                })
+        except Exception:
+            pass
+
+        try:
+            insider = get_insider_summary(ticker)
+            if insider and insider.get("n_sells", 0) > insider.get("n_buys", 0):
+                flags.append({
+                    "code": "INSIDER_SELL",
+                    "label": "Insider net sell",
+                    "severity": "warn",
+                })
+        except Exception:
+            pass
 
     rank = ranks.get(ticker)
     if rank is not None and universe_size > 0:
@@ -143,17 +156,6 @@ def _build_flags(
                 "label": f"Mom #{rank}/{universe_size}",
                 "severity": "warn",
             })
-
-    try:
-        insider = get_insider_summary(ticker)
-        if insider and insider.get("n_sells", 0) > insider.get("n_buys", 0):
-            flags.append({
-                "code": "INSIDER_SELL",
-                "label": "Insider net sell",
-                "severity": "warn",
-            })
-    except Exception:
-        pass
 
     if current_price is not None:
         _, extended = _sma20_and_extension(ticker, current_price)
@@ -173,18 +175,23 @@ def snapshot_ticker(
     universe_size: int,
     trade_type: str = "long_stock",
     note: str = "",
+    *,
+    fast: bool = False,
 ) -> dict:
     symbol = symbol.upper()
-    changes = price_changes(symbol)
+    changes = price_changes(symbol, fast=fast)
     current = None
     df = db.get_prices(symbol)
     if df is not None and not df.empty:
-        from app import get_current_price_yfinance
+        if fast:
+            current = float(df["close"].iloc[-1])
+        else:
+            from app import get_current_price_yfinance
 
-        live = get_current_price_yfinance(symbol)
-        current = live if live is not None else float(df["close"].iloc[-1])
+            live = get_current_price_yfinance(symbol)
+            current = live if live is not None else float(df["close"].iloc[-1])
 
-    flags = _build_flags(symbol, ranks, universe_size, current)
+    flags = _build_flags(symbol, ranks, universe_size, current, fast=fast)
     fail_n = sum(1 for f in flags if f["severity"] == "fail")
     warn_n = sum(1 for f in flags if f["severity"] == "warn")
 
@@ -216,24 +223,20 @@ def build_morning_scan() -> list[dict]:
     ]
 
     snapshots: list[dict] = []
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {
-            pool.submit(
-                snapshot_ticker,
-                item["symbol"],
-                ranks,
-                universe_size,
-                item["trade_type"],
-                item["note"],
-            ): item["symbol"]
-            for item in items
-        }
-        for fut in as_completed(futures):
-            try:
-                snapshots.append(fut.result())
-            except Exception as e:
-                sym = futures[fut]
-                print(f"Morning snapshot failed for {sym}: {e}")
+    for item in items:
+        try:
+            snapshots.append(
+                snapshot_ticker(
+                    item["symbol"],
+                    ranks,
+                    universe_size,
+                    item["trade_type"],
+                    item["note"],
+                    fast=True,
+                )
+            )
+        except Exception as e:
+            print(f"Morning snapshot failed for {item['symbol']}: {e}")
 
     snapshots.sort(
         key=lambda s: (-s["flag_score"], s["mom_rank"] if s["mom_rank"] else 9999)

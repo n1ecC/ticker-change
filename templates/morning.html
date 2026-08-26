@@ -2,12 +2,12 @@
 {% block title %}Morning Scan{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
+<div class="max-w-4xl mx-auto">
   <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
     <div>
       <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Morning scan</h1>
       <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-        Watchlist flags · rank vs cached universe
+        Momentum + extension flags from cached prices
         {% if snapshots %} · {{ flagged_count }} of {{ snapshots|length }} flagged{% endif %}
       </p>
     </div>
@@ -21,90 +21,50 @@
   <div class="mb-4 text-sm text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg px-4 py-2">{{ error }}</div>
   {% endif %}
 
-  <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 mb-6">
-    <form action="/morning" method="POST" class="flex flex-col sm:flex-row gap-2 sm:items-end">
-      <div class="flex-1">
-        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">Ticker</label>
-        <input type="text" name="symbol" required placeholder="AAPL"
-               class="w-full px-3 py-2 text-sm font-mono uppercase bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-amber-500 outline-none">
-      </div>
-      <div class="sm:w-36">
-        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">Trade type</label>
-        <select name="trade_type" class="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg">
-          <option value="long_stock">Long stock</option>
-          <option value="long_call">Long call</option>
-          <option value="short_put">Short put</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
-      <div class="flex-1">
-        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">Note</label>
-        <input type="text" name="note" placeholder="Optional"
-               class="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg">
-      </div>
-      <button type="submit" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm rounded-lg">Add</button>
-    </form>
-  </div>
+  <form action="/morning" method="POST" class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 mb-6">
+    <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">Watchlist (comma-separated, max 25)</label>
+    <textarea name="symbols" rows="2" placeholder="AAPL, MSFT, NVDA, SPY"
+              class="w-full px-3 py-2 text-sm font-mono uppercase bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-amber-500 outline-none resize-y">{{ symbols_csv }}</textarea>
+    <div class="flex items-center justify-between mt-3 gap-3">
+      <p class="text-xs text-zinc-500">Paste or edit tickers, then save. Clear the field to empty the list.</p>
+      <button type="submit" class="shrink-0 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-sm rounded-lg">Save</button>
+    </div>
+  </form>
 
   {% if not snapshots %}
   <div class="text-center py-16 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl">
-    <p class="text-zinc-600 dark:text-zinc-400 mb-2">No symbols on your watchlist.</p>
+    <p class="text-zinc-600 dark:text-zinc-400 mb-2">No symbols yet.</p>
     <p class="text-sm text-zinc-500">Add tickers above, or find ideas on the <a href="/momentum?tab=screener" class="text-amber-600 dark:text-amber-400 hover:underline">momentum screener</a>.</p>
   </div>
   {% else %}
-  <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-    <table class="w-full text-sm">
-      <thead class="bg-zinc-50 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800">
-        <tr>
-          <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Symbol</th>
-          <th class="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">1D</th>
-          <th class="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">5D</th>
-          <th class="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Mom</th>
-          <th class="text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Flags</th>
-          <th class="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Actions</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
-        {% for row in snapshots %}
-        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
-          <td class="px-3 py-2 font-mono font-semibold text-zinc-900 dark:text-zinc-100">
-            {{ row.symbol }}
-            {% if row.note %}<span class="block text-[10px] font-normal text-zinc-400 truncate max-w-[8rem]">{{ row.note }}</span>{% endif %}
-          </td>
-          <td class="px-3 py-2 text-right font-mono {% if row.pct_1d is not none and row.pct_1d >= 0 %}text-emerald-600{% elif row.pct_1d is not none %}text-rose-600{% else %}text-zinc-400{% endif %}">
-            {% if row.pct_1d is not none %}{{ '+' if row.pct_1d > 0 else '' }}{{ '%.2f'|format(row.pct_1d) }}%{% else %}—{% endif %}
-          </td>
-          <td class="px-3 py-2 text-right font-mono {% if row.pct_5d is not none and row.pct_5d >= 0 %}text-emerald-600{% elif row.pct_5d is not none %}text-rose-600{% else %}text-zinc-400{% endif %}">
-            {% if row.pct_5d is not none %}{{ '+' if row.pct_5d > 0 else '' }}{{ '%.2f'|format(row.pct_5d) }}%{% else %}—{% endif %}
-          </td>
-          <td class="px-3 py-2 text-right font-mono text-zinc-600 dark:text-zinc-300">
-            {% if row.mom_rank %}#{{ row.mom_rank }}{% else %}—{% endif %}
-          </td>
-          <td class="px-3 py-2">
-            <div class="flex flex-wrap gap-1">
-              {% for f in row.flags %}
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border
-                {% if f.severity == 'fail' %}border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40
-                {% elif f.severity == 'warn' %}border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40
-                {% else %}border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400{% endif %}">{{ f.label }}</span>
-              {% else %}
-              <span class="text-[10px] text-zinc-400">—</span>
-              {% endfor %}
-            </div>
-          </td>
-          <td class="px-3 py-2 text-right whitespace-nowrap">
-            <a href="/analytics?ticker={{ row.symbol }}&trade_type={{ row.trade_type }}" class="text-xs text-amber-600 dark:text-amber-400 hover:underline mr-2">Check</a>
-            <a href="/stock?ticker={{ row.symbol }}" class="text-xs text-zinc-500 hover:underline mr-2">Stock</a>
-            <form action="/morning/remove" method="POST" class="inline">
-              <input type="hidden" name="symbol" value="{{ row.symbol }}">
-              <button type="submit" class="text-xs text-zinc-400 hover:text-rose-500">Remove</button>
-            </form>
-          </td>
-        </tr>
+  <div class="space-y-2">
+    {% for row in snapshots %}
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl">
+      <a href="/stock?ticker={{ row.symbol }}" class="font-mono font-semibold text-zinc-900 dark:text-zinc-100 hover:text-amber-600 dark:hover:text-amber-400">{{ row.symbol }}</a>
+      <span class="text-xs font-mono {% if row.pct_1d is not none and row.pct_1d >= 0 %}text-emerald-600{% elif row.pct_1d is not none %}text-rose-600{% else %}text-zinc-400{% endif %}">
+        1D {% if row.pct_1d is not none %}{{ '+' if row.pct_1d > 0 else '' }}{{ '%.1f'|format(row.pct_1d) }}%{% else %}—{% endif %}
+      </span>
+      <span class="text-xs font-mono {% if row.pct_5d is not none and row.pct_5d >= 0 %}text-emerald-600{% elif row.pct_5d is not none %}text-rose-600{% else %}text-zinc-400{% endif %}">
+        5D {% if row.pct_5d is not none %}{{ '+' if row.pct_5d > 0 else '' }}{{ '%.1f'|format(row.pct_5d) }}%{% else %}—{% endif %}
+      </span>
+      <span class="text-xs font-mono text-zinc-500">
+        Mom {% if row.mom_rank %}#{{ row.mom_rank }}{% else %}—{% endif %}
+      </span>
+      <div class="flex flex-wrap gap-1 flex-1 min-w-[8rem]">
+        {% for f in row.flags %}
+        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border
+          {% if f.severity == 'fail' %}border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40
+          {% elif f.severity == 'warn' %}border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40
+          {% else %}border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400{% endif %}">{{ f.label }}</span>
+        {% else %}
+        <span class="text-[10px] text-zinc-400">No flags</span>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+      <a href="/analytics?ticker={{ row.symbol }}&trade_type={{ row.trade_type }}" class="text-xs text-amber-600 dark:text-amber-400 hover:underline shrink-0">Checklist →</a>
+    </div>
+    {% endfor %}
   </div>
+  <p class="text-[10px] text-zinc-400 mt-4">Morning scan uses cached prices only (momentum rank, extension). Full earnings/IV/insider checks run on the analytics checklist.</p>
   {% endif %}
 </div>
 {% endblock %}

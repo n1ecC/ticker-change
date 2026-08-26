@@ -66,6 +66,20 @@ WATCHLIST_MAX = 25
 WATCHLIST_TRADE_TYPES = frozenset({"long_stock", "long_call", "short_put", "other"})
 
 
+def _parse_symbols(raw: str) -> list[str]:
+    """Split comma/whitespace-separated tickers, dedupe, uppercase."""
+    import re
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in re.split(r"[,;\s]+", (raw or "").strip()):
+        sym = part.strip().upper()
+        if sym and sym not in seen:
+            seen.add(sym)
+            out.append(sym)
+    return out
+
+
 def watchlist_list() -> list[sqlite3.Row]:
     """Return watchlist rows ordered by most recently added."""
     try:
@@ -114,6 +128,30 @@ def watchlist_remove(symbol: str) -> bool:
             return cur.rowcount > 0
     except sqlite3.OperationalError:
         return False
+
+
+def watchlist_set(symbols_raw: str, trade_type: str = "long_stock") -> tuple[bool, str]:
+    """Replace watchlist from comma-separated tickers. Returns (ok, message)."""
+    symbols = _parse_symbols(symbols_raw)
+    if trade_type not in WATCHLIST_TRADE_TYPES:
+        trade_type = "long_stock"
+    try:
+        with get_conn() as conn:
+            conn.execute("DELETE FROM watchlist")
+            if not symbols:
+                return True, "Watchlist cleared"
+            if len(symbols) > WATCHLIST_MAX:
+                return False, f"Max {WATCHLIST_MAX} symbols (got {len(symbols)})"
+            now = datetime.utcnow().isoformat()
+            for sym in symbols:
+                conn.execute(
+                    "INSERT INTO watchlist (symbol, trade_type, note, added_at) "
+                    "VALUES (?, ?, '', ?)",
+                    (sym, trade_type, now),
+                )
+    except sqlite3.OperationalError:
+        return False, "Watchlist table unavailable"
+    return True, f"{len(symbols)} symbol{'s' if len(symbols) != 1 else ''} saved"
 
 
 def get_setting(key: str, default: str = "") -> str:

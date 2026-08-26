@@ -597,30 +597,26 @@ def index():
 
 @app.route('/morning', methods=['GET', 'POST'])
 def morning_page():
+    rows = db.watchlist_list()
+    symbols_csv = ", ".join(r["symbol"] for r in reversed(rows))
     if request.method == 'POST':
-        symbol = request.form.get('symbol', '')
-        trade_type = request.form.get('trade_type', 'long_stock')
-        note = request.form.get('note', '')
-        ok, msg = db.watchlist_add(symbol, trade_type=trade_type, note=note)
+        symbols_raw = request.form.get('symbols', '')
+        ok, msg = db.watchlist_set(symbols_raw)
         if ok:
-            return redirect(url_for('morning_page', msg=f'Added {msg}'))
-        return redirect(url_for('morning_page', error=msg))
+            return redirect(url_for('morning_page', msg=msg))
+        return redirect(url_for('morning_page', error=msg, symbols=symbols_raw))
+    if request.args.get('symbols'):
+        symbols_csv = request.args.get('symbols', symbols_csv)
     snapshots = decide.build_morning_scan()
     flagged = sum(1 for s in snapshots if s.get('flags'))
     return render_template(
         'morning.html',
         snapshots=snapshots,
+        symbols_csv=symbols_csv,
         flagged_count=flagged,
         message=request.args.get('msg'),
         error=request.args.get('error'),
     )
-
-
-@app.route('/morning/remove', methods=['POST'])
-def morning_remove():
-    symbol = request.form.get('symbol', '')
-    db.watchlist_remove(symbol)
-    return redirect(url_for('morning_page', msg=f'Removed {symbol.upper()}' if symbol else None))
 
 
 @app.route('/api/morning')
