@@ -40,6 +40,9 @@
   </div>
 </div>
 
+{% set checklist = data.checklist %}
+{% include '_checklist.html' %}
+
 {% if data.ai_sections and data.ai_sections.bottom_line %}
 <div class="mb-8 p-4 sm:p-6 rounded-xl border border-amber-300/40 dark:border-amber-500/20 bg-amber-50/20 dark:bg-amber-500/5 backdrop-blur-md">
   <div class="flex items-center gap-2 font-bold text-sm text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">

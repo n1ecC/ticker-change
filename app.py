@@ -2119,6 +2119,11 @@ def analytics_page():
     data['charts']['gex'] = gex['chart'] if gex else None
     data['gex'] = gex['stats'] if gex else None
 
+    trade_type = request.args.get('trade_type', 'long_stock')
+    if trade_type not in db.WATCHLIST_TRADE_TYPES:
+        trade_type = 'long_stock'
+    data['checklist'] = decide.build_checklist(ticker, data, trade_type)
+
     # Attach insider chart (needs price df)
     price_df = get_or_fetch_prices(ticker)
     if price_df is not None:
@@ -2187,6 +2192,21 @@ def analytics_page():
         data['ai_sections'] = None
 
     return render_template('analytics.html', data=data, ticker=ticker)
+
+
+@app.route('/api/checklist/<ticker>')
+def checklist_api(ticker):
+    ticker = ticker.strip().upper()
+    trade_type = request.args.get('trade_type', 'long_stock')
+    if trade_type not in db.WATCHLIST_TRADE_TYPES:
+        trade_type = 'long_stock'
+    data = compute_analytics(ticker)
+    if data is None:
+        return jsonify({"error": f"Could not retrieve data for {ticker}"}), 404
+    data['fundamentals'] = get_fundamentals(ticker)
+    gex = get_gex_profile(ticker, data['current_price'])
+    data['gex'] = gex['stats'] if gex else None
+    return jsonify(decide.build_checklist(ticker, data, trade_type))
 
 
 @app.route('/api/analytics/<ticker>')
